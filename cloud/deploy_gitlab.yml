@@ -10,7 +10,20 @@
 
   - name: debug
     ansible.builtin.debug:
-      msg: "{{ hosted_zones }}"
+      msg: "{{ hosted_zones}}"
+  - name: debug
+    ansible.builtin.debug:
+      msg: "{{ hosted_zones[0] }}"
+
+  - name: debug
+    ansible.builtin.debug:
+      msg: "{{ hosted_zones[0].Name }}"
+
+  - name: Set hostname
+    ansible.builtin.set_fact:
+      hostname: "gitlab.{{ hosted_zones[0].Name }}"
+      zone: "{{ hosted_zones[0].Name }}"
+      msg: "{{ hosted_zones[0].Name }}"
 
   - name: Configure certificates
     ansible.builtin.include_role:       
