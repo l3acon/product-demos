@@ -514,7 +514,7 @@ controller_workflows:
             - us-west-2
         - question_name: Keypair Public Key
           type: textarea
-          variable: gitlab_ssh_public_key
+          variable: aws_public_key
           required: true
     simplified_workflow_nodes:
       - identifier: Create Cloud Stack
@@ -526,7 +526,6 @@ controller_workflows:
           create_vm_aws_region: "us-east-2"
           create_vm_aws_owner_tag: "gitlab"
           vm_environment: "Prod"
-          aws_public_key: "{{ gitlab_ssh_public_key }}"
           email: "git@gitlab.exmaple.com"
 
       - identifier: Provision GitLab
