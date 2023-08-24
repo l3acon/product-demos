@@ -372,7 +372,7 @@ controller_templates:
     organization: Default
     credentials:
       - AWS
-      - Workshop Credential
+      - Demo Credential
       - Controller Credential
     project: Ansible Cloud Content Lab - AWS
     playbook: cloud/deploy_gitlab.yml
