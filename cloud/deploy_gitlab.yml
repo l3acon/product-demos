@@ -11,7 +11,7 @@
       name: ['python3-cryptography', 'python3-pip']
       state: present
 
-  - name: install python depends
+  - name: Install python depends
     ansible.builtin.pip:
      name: ['boto3', 'botocore']
      state: present
@@ -37,20 +37,21 @@
       state: directory
       mode: '0700'
 
-  - name: Configure certificates
+  - name: Configure certificates (sanity)
     ansible.builtin.include_role:       
       name: "demo.cloud.certbot53"
     vars:
       acme_env: staging
 
-  - name: Configure certificates
-    ansible.builtin.include_role:       
+  - name: Configure certificates (for real)
+    ansible.builtin.include_role: 
       name: "demo.cloud.certbot53"
     vars:
       acme_env: production
       acme_directory: "https://acme-v02.api.letsencrypt.org/directory"
 
   - name: Configure GitLab
+    become: true
     ansible.builtin.include_role:       
       name: "demo.cloud.gitlab"
 
