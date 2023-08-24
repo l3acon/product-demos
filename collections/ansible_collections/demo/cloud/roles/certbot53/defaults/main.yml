@@ -1,0 +1,16 @@
+---
+route53_zone: ""
+hostname: ""
+installed_dir: ""
+
+# staging, use for testing purposes
+acme_directory: "https://acme-staging-v02.api.letsencrypt.org/directory"
+acme_env: staging
+
+# use for production use
+# acme_directory: "https://acme-v02.api.letsencrypt.org/directory"
+#acme_env: production
+
+acme_version: 2
+account_email: "ansible-network@redhat.com"
+fqdn: "{{ hostname }}.{{ route53_zone }}"
