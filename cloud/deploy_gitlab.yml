@@ -5,7 +5,7 @@
     controller_components:
       - workflow_launch
       - job_launch
-      - inventory_source_sync
+      - inventory_source_update
 
     controller_workflow_launch_jobs:
       - name: Deploy Cloud Stack in AWS
@@ -55,4 +55,16 @@
       loop: "{{ controller_components }}"
       when:
         - controller_components | d("") | length > 0
+
+
+- name: Deploy GitLab
+  hosts: gitlab
+  tasks:
+  - name: Configure certificates
+    ansible.builtin.include_role:       
+      name: "demo.cloud.certbot53"
+
+  - name: Configure GitLab
+    ansible.builtin.include_role:       
+      name: "demo.cloud.gitlab"
 
