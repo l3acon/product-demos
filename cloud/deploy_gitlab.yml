@@ -4,7 +4,8 @@
   vars:
     hostname: gitlab
   tasks:
-  - name: install package depends
+  - name: Install package depends
+    become: true
     ansible.builtin.package:
       name: ['python3-cryptography', 'python3-pip']
       state: present
