@@ -18,7 +18,6 @@
 - name: Build top level directory
   ansible.builtin.file:
     path: "{{ cert_path }}"
-    recurse: yes
     state: directory
     mode: '0700'
 
@@ -31,7 +30,7 @@
     csr_path: "{{ cert_path }}/{{ fqdn }}.csr"
     crt_path: "{{ cert_path }}/{{ fqdn }}.crt"
 
- - name: debug
+- name: debug
   debug:
     msg: "{{ account_privatekey }}"
 
