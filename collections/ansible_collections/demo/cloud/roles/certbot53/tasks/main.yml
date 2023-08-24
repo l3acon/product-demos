@@ -68,10 +68,8 @@
 
 - name: fulfill challenge in route53
   community.aws.route53:
-    #aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default(aws_access_key) }}"
-    aws_access_key: "{{ aws_access }}"
-    #aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | default(aws_secret_key) }}"
-    aws_secret_key: "{{ aws_secret }}"
+    aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default(aws_access_key) }}"
+    aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | default(aws_secret_key) }}"
     zone: "{{ route53_zone }}"
     record: "{{ challenge_output.challenge_data[fqdn]['dns-01'].record }}"
     type: TXT

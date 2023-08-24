@@ -27,7 +27,8 @@
 
   - name: debug
     ansible.builtin.debug:
-      msg: "{{ route53_zone }}"
+      msg: "route53 Hosted Zone {{ route53_zone }}
+            domain: {{ hostname }}"
 
   - name: Configure certificates
     ansible.builtin.include_role:       
