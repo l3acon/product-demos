@@ -46,7 +46,7 @@
 
     controller_inventory_sources:
       - name: "Demo Inventory"
-        inventory: "Demo Inventory"
+        inventory: "AWS Inventory"
 
   tasks:
     - name: Demo Components
@@ -55,7 +55,6 @@
       loop: "{{ controller_components }}"
       when:
         - controller_components | d("") | length > 0
-
 
 - name: Deploy GitLab
   hosts: gitlab
