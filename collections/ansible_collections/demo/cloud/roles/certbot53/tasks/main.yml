@@ -11,9 +11,12 @@
     suffix: "certbot53"
   register: cert_dir
 
-- name: Build paths
+- name: Generate top level certificate path
   ansible.builtin.set_fact:
-    cert_path: "{{cert_dir.path }}/{{ acme_env }}"
+    cert_path: "{{ cert_dir.path }}/{{ acme_env }}"
+
+- name: Build paths from tmp file and acme env
+  ansible.builtin.set_fact:
     privatekey_path: "{{ cert_path }}/{{ fqdn }}.pem"
     fullchain_path: "{{ cert_path }}/fullchain.crt"
     chain_path: "{{ cert_path }}/intermediate.crt"
