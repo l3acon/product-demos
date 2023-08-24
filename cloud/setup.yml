@@ -374,7 +374,7 @@ controller_templates:
       - AWS
       - Demo Credential
       - Controller Credential
-    project: Ansible Cloud Content Lab - AWS
+    project: Ansible official demo project
     playbook: cloud/deploy_gitlab.yml
     inventory: Demo Inventory
     notification_templates_started: Telemetry
