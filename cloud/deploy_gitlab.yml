@@ -23,7 +23,11 @@
 
   - name: Set hostname
     ansible.builtin.set_fact:
-      route53_zone: "{{ r53.HostedZones[0].Name }}"
+      route53_zone: "{{ r53.HostedZones[0].Name[:-1] }}"
+
+  - name: debug
+    ansible.builtin.debug:
+      msg: "{{ route53_zone }}"
 
   - name: Configure certificates
     ansible.builtin.include_role:       
