@@ -45,8 +45,8 @@
           create_vm_aws_securitygroup_name: aws-test-sg
 
     controller_inventory_sources:
-      - name: "AWS Inventory"
-        source: ec2
+      - name: "Demo Inventory"
+        inventory: "Demo Inventory"
 
   tasks:
     - name: Demo Components
