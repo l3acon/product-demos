@@ -1,13 +1,12 @@
 ---
 - name: Deploy GitLab
   hosts: gitlab
+  become: true
   vars:
     cb53_hostname: "gitlab"
     cb53_cert_dir:  "/root/cb53_certs/"
   tasks:
-
   - name: Install package depends
-    become: true
     ansible.builtin.package:
       name: ['python3-cryptography', 'python3-pip']
       state: present
@@ -41,6 +40,7 @@
   - name: Configure certificates (sanity)
     ansible.builtin.include_role:       
       name: "demo.cloud.certbot53"
+
     vars:
       acme_env: staging
 
@@ -54,6 +54,3 @@
   - name: Configure GitLab
     ansible.builtin.include_role:       
       name: "demo.cloud.gitlab"
-      apply:
-        become: true
-
