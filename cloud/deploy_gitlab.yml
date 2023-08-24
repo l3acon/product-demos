@@ -23,14 +23,14 @@
     register: r53
     delegate_to: localhost
 
-  - name: Set hostname
+  - name: Set required variables
     ansible.builtin.set_fact:
       cb53_route53_zone: "{{ r53.HostedZones[0].Name[:-1] }}"
 
   - name: debug
     ansible.builtin.debug:
-      msg: "route53 Hosted Zone {{ route53_zone }}
-            domain: {{ hostname }}"
+      msg: "route53 Hosted Zone {{ cb53_route53_zone }}
+            domain: {{ cb53_hostname }}"
 
   - name: Create certificate directory
     ansible.builtin.file:       
