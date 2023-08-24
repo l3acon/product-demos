@@ -1,29 +1,30 @@
 ---
 - name: Deploy GitLab
   hosts: gitlab
+  vars:
+    hostname: gitlab
   tasks:
+
   - name: List all hosted zones
     amazon.aws.route53_info:
       query: hosted_zone
-    register: hosted_zones
+    register: r53
     delegate_to: localhost
 
   - name: debug
     ansible.builtin.debug:
-      msg: "{{ hosted_zones}}"
+      msg: "{{ r53.HostedZones}}"
   - name: debug
     ansible.builtin.debug:
-      msg: "{{ hosted_zones[0] }}"
+      msg: "{{ r53.HostedZones[0] }}"
 
   - name: debug
     ansible.builtin.debug:
-      msg: "{{ hosted_zones[0].Name }}"
+      msg: "{{ r53.HostedZones[0].Name }}"
 
   - name: Set hostname
     ansible.builtin.set_fact:
-      hostname: "gitlab.{{ hosted_zones[0].Name }}"
-      zone: "{{ hosted_zones[0].Name }}"
-      msg: "{{ hosted_zones[0].Name }}"
+      zone: "{{ r53.HostedZones[0].Name }}"
 
   - name: Configure certificates
     ansible.builtin.include_role:       
