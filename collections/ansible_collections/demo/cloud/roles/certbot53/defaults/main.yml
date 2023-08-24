@@ -1,7 +1,15 @@
 ---
-route53_zone: ""
-hostname: ""
-installed_dir: ""
+cb53_hostname: ""
+cb53_route53_zone: ""
+cb53_cert_dir: ""
+
+cert_path: "{{ cb53_cert_dir }}/{{ acme_env }}"
+privatekey_path: "{{ cert_path }}/{{ fqdn }}.pem"
+fullchain_path: "{{ cert_path }}/fullchain.crt"
+chain_path: "{{ cert_path }}/intermediate.crt"
+account_privatekey: "{{ cert_path }}/letsencrypt-{{ acme_env }}.pem"
+csr_path: "{{ cert_path }}/{{ fqdn }}.csr"
+crt_path: "{{ cert_path }}/{{ fqdn }}.crt"
 
 # staging, use for testing purposes
 acme_directory: "https://acme-staging-v02.api.letsencrypt.org/directory"
@@ -13,4 +21,4 @@ acme_env: staging
 
 acme_version: 2
 account_email: "ansible-network@redhat.com"
-fqdn: "{{ hostname }}.{{ route53_zone }}"
+fqdn: "{{ cb53_hostname }}.{{ cb53_route53_zone }}"

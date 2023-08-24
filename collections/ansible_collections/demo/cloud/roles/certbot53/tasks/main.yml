@@ -2,37 +2,15 @@
 - name: Check required variables
   ansible.builtin.assert:
     that:
-      - hostname | length > 0
-      - route53_zone | length > 0
-
-- name: Create temporary build directory
-  ansible.builtin.tempfile:
-    state: directory
-    suffix: "certbot53"
-  register: cert_dir
-
-- name: Generate top level certificate path
-  ansible.builtin.set_fact:
-    cert_path: "{{ cert_dir.path }}/{{ acme_env }}"
+      - cb53_hostname | length > 0
+      - cb53_route53_zone | length > 0
+      - cb53_cert_dir | length > 0
 
 - name: Build top level directory
   ansible.builtin.file:
     path: "{{ cert_path }}"
     state: directory
     mode: '0700'
-
-- name: Build paths from tmp file and acme env
-  ansible.builtin.set_fact:
-    privatekey_path: "{{ cert_path }}/{{ fqdn }}.pem"
-    fullchain_path: "{{ cert_path }}/fullchain.crt"
-    chain_path: "{{ cert_path }}/intermediate.crt"
-    account_privatekey: "{{ cert_path }}/letsencrypt-{{ acme_env }}.pem"
-    csr_path: "{{ cert_path }}/{{ fqdn }}.csr"
-    crt_path: "{{ cert_path }}/{{ fqdn }}.crt"
-
-- name: debug
-  debug:
-    msg: "{{ account_privatekey }}"
 
 - name: Generate account private key
   community.crypto.openssl_privatekey:
@@ -67,7 +45,7 @@
     msg: "{{ challenge_output }}"
 
 - name: fulfill challenge in route53
-  community.aws.route53:
+  amazon.aws.route53:
     aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default(aws_access_key) }}"
     aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | default(aws_secret_key) }}"
     zone: "{{ route53_zone }}"
@@ -99,4 +77,9 @@
     data: "{{ challenge_output }}"
   when: challenge_output is changed
 
-
+- name: Set stats for private key and full chain
+  ansible.builtin.set_stats:
+    data:
+      certbot53_public_path: "{{ fullchain_path }}"
+      certbot53_private_path: "{{ privatekey_path }}"
+  when: challenge_output is changed
