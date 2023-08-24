@@ -2,6 +2,7 @@
 - name: Deploy GitLab
   hosts: gitlab
   become: true
+  become_method: su
   vars:
     cb53_hostname: "gitlab"
     cb53_cert_dir:  "/root/cb53_certs/"
