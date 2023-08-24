@@ -4,23 +4,21 @@
   vars:
     hostname: gitlab
   tasks:
+  - name: install package depends
+    ansible.builtin.package:
+      name: ['python3-cryptography', 'python3-pip']
+      state: present
 
-  - name: List all hosted zones
+  - name: install python depends
+    ansible.builtin.pip:
+     name: ['boto3', 'botocore']
+     state: present
+
+  - name: Query route53 for all hosted zones
     amazon.aws.route53_info:
       query: hosted_zone
     register: r53
     delegate_to: localhost
-
-  - name: debug
-    ansible.builtin.debug:
-      msg: "{{ r53.HostedZones}}"
-  - name: debug
-    ansible.builtin.debug:
-      msg: "{{ r53.HostedZones[0] }}"
-
-  - name: debug
-    ansible.builtin.debug:
-      msg: "{{ r53.HostedZones[0].Name }}"
 
   - name: Set hostname
     ansible.builtin.set_fact:
