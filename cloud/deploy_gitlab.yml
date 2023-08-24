@@ -3,8 +3,8 @@
   hosts: localhost
   vars:
     controller_components:
-      - job_launch
       - workflow_launch
+      - job_launch
 
     controller_workflow_launch_jobs:
       - name: Deploy Cloud Stack in AWS
@@ -16,7 +16,7 @@
           aws_public_key: "{{ gitlab_ssh_public_key }}"
           email: "git@gitlab.exmaple.com"
 
-    controller_job_launch:
+    controller_launch_jobs:
       - name: Cloud / AWS / Create VM
         wait: true
         extra_vars:
