@@ -9,8 +9,8 @@
       - name: Deploy Cloud Stack in AWS
         wait: true
         extra_vars:
-          aws_region: "us-east-2"
-          aws_owner_tag: "gitlab"
+          create_vm_aws_region: "us-east-2"
+          create_vm_aws_owner_tag: "gitlab"
           vm_environment: "infrastructure"
           aws_public_key: "{{ gitlab_ssh_public_key }}"
           email: "git@gitlab.exmaple.com"
@@ -18,26 +18,22 @@
       - name: Cloud / AWS / Create VM
         wait: true
         extra_vars:
-          aws_region: "us-east-2"
-          vm_name: gitlab
-          vm_owner: "gitlab"
-          vm_deployment: "gitlab"
-          vm_environment: "infrastructure"
-          vm_blueprint: "rhel9"
-          aws_vpc_subnet_name: "aws-test-subnet"
-          aws_securitygroup_name: "aws-test-sg"
+          create_vm_aws_region: "us-east-2"
+          create_vm_vm_name: gitlab
+          create_vm_vm_owner: "gitlab"
+          create_vm_vm_deployment: "gitlab"
+          create_vm_vm_environment: "infrastructure"
+          create_vm_vm_blueprint: "rhel9"
     
       - name: Cloud / AWS / Create VM
         wait: true
         extra_vars:
-          aws_region: "us-east-2"
-          vm_name: gitlab-runner
-          vm_owner: "gitlab"
-          vm_deployment: "gitlab"
-          vm_environment: "infrastructure"
-          vm_blueprint: "rhel9"
-          aws_vpc_subnet_name: "aws-test-subnet"
-          aws_securitygroup_name: "aws-test-sg"
+          create_vm_aws_region: "us-east-2"
+          create_vm_vm_name: gitlab-runner
+          create_vm_vm_owner: "gitlab"
+          create_vm_vm_deployment: "gitlab"
+          create_vm_vm_environment: "infrastructure"
+          create_vm_vm_blueprint: "rhel9"
 
   tasks:
     - name: Demo Components

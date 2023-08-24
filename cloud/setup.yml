@@ -376,7 +376,7 @@ controller_templates:
       - Controller Credential
     project: Ansible Cloud Content Lab - AWS
     playbook: cloud/deploy_gitlab.yml
-    inventory: Workshop Inventory
+    inventory: Demo Inventory
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
     notification_templates_error: Telemetry
@@ -388,7 +388,7 @@ controller_templates:
       spec:
         - question_name: AWS Region
           type: multiplechoice
-          variable: aws_region
+          variable: create_vm_aws_region
           required: true
           choices:
             - us-east-1
