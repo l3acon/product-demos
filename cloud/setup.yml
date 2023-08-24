@@ -375,7 +375,7 @@ controller_templates:
       - Workshop Credential
       - Controller Credential
     project: Ansible Cloud Content Lab - AWS
-    playbook: playbook_deploy_gitlab.yml
+    playbook: cloud/deploy_gitlab.yml
     inventory: Workshop Inventory
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
