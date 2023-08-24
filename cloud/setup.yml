@@ -373,14 +373,12 @@ controller_templates:
     credentials:
       - AWS
       - Demo Credential
-      - Controller Credential
     project: Ansible official demo project
     playbook: cloud/deploy_gitlab.yml
     inventory: Demo Inventory
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
     notification_templates_error: Telemetry
-    survey_enabled: true
     allow_simultaneous: true
 
 controller_workflows:
@@ -565,15 +563,3 @@ controller_workflows:
 
       - identifier: Deploy GitLab
         unified_job_template:  Cloud / GitLab / Deploy
-        extra_data:
-          vm_blueprint: "rhel9"
-          create_vm_aws_region: "us-east-2"
-          create_vm_vm_name: gitlab-runner
-          create_vm_vm_owner: "gitlab"
-          create_vm_vm_deployment: "gitlab"
-          create_vm_vm_environment: "Prod"
-          create_vm_aws_vpc_subnet_name: aws-test-subnet
-          create_vm_aws_keypair_name: aws-test-key
-          create_vm_aws_securitygroup_name: aws-test-sg
-
-
