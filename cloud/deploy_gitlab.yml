@@ -2,6 +2,16 @@
 - name: Deploy GitLab
   hosts: gitlab
   tasks:
+  - name: List all hosted zones
+    amazon.aws.route53_info:
+      query: hosted_zone
+    register: hosted_zones
+    delegate_to: localhost
+
+  - name: debug
+    ansible.builtin.debug:
+      msg: "{{ hosted_zones }}"
+
   - name: Configure certificates
     ansible.builtin.include_role:       
       name: "demo.cloud.certbot53"

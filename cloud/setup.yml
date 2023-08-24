@@ -490,8 +490,8 @@ controller_workflows:
       - identifier: Tag Report
         unified_job_template: Cloud / AWS / Tags Report
 
-  - name: Deploy GitLab CI/CD
-    description: A workflow to deploy gitlab instance w/ runner.
+  - name: Deploy GitLab CI/CD Stack in AWS
+    description: A workflow to deploy GitLab instance and runner on AWS cloud.
     organization: Default
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
