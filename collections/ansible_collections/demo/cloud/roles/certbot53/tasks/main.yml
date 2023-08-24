@@ -15,6 +15,13 @@
   ansible.builtin.set_fact:
     cert_path: "{{ cert_dir.path }}/{{ acme_env }}"
 
+- name: Build top level directory
+  ansible.builtin.file:
+    path: "{{ cert_path }}"
+    recurse: yes
+    state: directory
+    mode: '0700'
+
 - name: Build paths from tmp file and acme env
   ansible.builtin.set_fact:
     privatekey_path: "{{ cert_path }}/{{ fqdn }}.pem"
@@ -23,7 +30,11 @@
     account_privatekey: "{{ cert_path }}/letsencrypt-{{ acme_env }}.pem"
     csr_path: "{{ cert_path }}/{{ fqdn }}.csr"
     crt_path: "{{ cert_path }}/{{ fqdn }}.crt"
-        
+
+ - name: debug
+  debug:
+    msg: "{{ account_privatekey }}"
+
 - name: Generate account private key
   community.crypto.openssl_privatekey:
     path: "{{ account_privatekey }}"
