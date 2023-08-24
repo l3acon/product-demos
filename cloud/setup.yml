@@ -382,23 +382,6 @@ controller_templates:
     notification_templates_error: Telemetry
     survey_enabled: true
     allow_simultaneous: true
-    survey:
-      name: ''
-      description: ''
-      spec:
-        - question_name: AWS Region
-          type: multiplechoice
-          variable: create_vm_aws_region
-          required: true
-          choices:
-            - us-east-1
-            - us-east-2
-            - us-west-1
-            - us-west-2
-        - question_name: Keypair Public Key
-          type: textarea
-          variable: gitlab_ssh_public_key
-          required: true
 
 controller_workflows:
   - name: Deploy Cloud Stack in AWS
@@ -508,3 +491,90 @@ controller_workflows:
           feedback: Failed to create AWS instance
       - identifier: Tag Report
         unified_job_template: Cloud / AWS / Tags Report
+
+  - name: Deploy GitLab with Gitlab runner
+    description: A workflow to deploy gitlab instance w/ runner.
+    organization: Default
+    notification_templates_started: Telemetry
+    notification_templates_success: Telemetry
+    notification_templates_error: Telemetry
+    extra_vars:
+    survey:
+      name: ''
+      description: ''
+      spec:
+        - question_name: AWS Region
+          type: multiplechoice
+          variable: create_vm_aws_region
+          required: true
+          choices:
+            - us-east-1
+            - us-east-2
+            - us-west-1
+            - us-west-2
+        - question_name: Keypair Public Key
+          type: textarea
+          variable: gitlab_ssh_public_key
+          required: true
+    simplified_workflow_nodes:
+      - identifier: Create Cloud Stack
+        unified_job_template: Deploy Cloud Stack in AWS
+        success_nodes:
+          - Provision GitLab
+          - Provision GitLab Runner
+        extra_data:
+          create_vm_aws_region: "us-east-2"
+          create_vm_aws_owner_tag: "gitlab"
+          vm_environment: "Prod"
+          aws_public_key: "{{ gitlab_ssh_public_key }}"
+          email: "git@gitlab.exmaple.com"
+
+      - identifier: Provision GitLab
+        unified_job_template: Cloud / AWS / Create VM
+        success_nodes:
+          - Update Inventory
+        extra_data:
+          vm_blueprint: "rhel9"
+          create_vm_aws_region: "us-east-2"
+          create_vm_vm_name: gitlab
+          create_vm_vm_owner: "gitlab"
+          create_vm_vm_deployment: "gitlab"
+          create_vm_vm_environment: "Prod"
+          create_vm_aws_vpc_subnet_name: aws-test-subnet
+          create_vm_aws_keypair_name: aws-test-key
+          create_vm_aws_securitygroup_name: aws-test-sg
+
+      - identifier: Provision GitLab Runner
+        unified_job_template: Cloud / AWS / Create VM
+        success_nodes:
+          - Update Inventory
+        extra_data:
+          vm_blueprint: "rhel9"
+          create_vm_aws_region: "us-east-2"
+          create_vm_vm_name: gitlab-runner
+          create_vm_vm_owner: "gitlab"
+          create_vm_vm_deployment: "gitlab"
+          create_vm_vm_environment: "Prod"
+          create_vm_aws_vpc_subnet_name: aws-test-subnet
+          create_vm_aws_keypair_name: aws-test-key
+          create_vm_aws_securitygroup_name: aws-test-sg
+
+      - identifier: Update Inventory
+        unified_job_template: AWS Inventory
+        success_nodes:
+          - Deploy GitLab
+
+      - identifier: Deploy GitLab
+        unified_job_template:  Cloud / GitLab / Deploy
+        extra_data:
+          vm_blueprint: "rhel9"
+          create_vm_aws_region: "us-east-2"
+          create_vm_vm_name: gitlab-runner
+          create_vm_vm_owner: "gitlab"
+          create_vm_vm_deployment: "gitlab"
+          create_vm_vm_environment: "Prod"
+          create_vm_aws_vpc_subnet_name: aws-test-subnet
+          create_vm_aws_keypair_name: aws-test-key
+          create_vm_aws_securitygroup_name: aws-test-sg
+
+
