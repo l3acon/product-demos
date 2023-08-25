@@ -41,19 +41,19 @@
   - name: Configure certificates (sanity)
     ansible.builtin.include_role:       
       name: "demo.cloud.certbot53"
+      apply:
+        become: true
     vars:
       acme_env: staging
-    apply:
-      become: true
 
   - name: Configure certificates (for real)
     ansible.builtin.include_role: 
       name: "demo.cloud.certbot53"
+      apply:
+        become: true
     vars:
       acme_env: production
       acme_directory: "https://acme-v02.api.letsencrypt.org/directory"
-    apply:
-      become: true
 
   - name: Configure GitLab
     ansible.builtin.include_role:       
