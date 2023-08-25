@@ -76,6 +76,7 @@
     remaining_days: 60
     data: "{{ challenge_output }}"
   when: challenge_output is changed
+  retries: 3
 
 - name: Set stats for private key and full chain
   ansible.builtin.set_stats:
