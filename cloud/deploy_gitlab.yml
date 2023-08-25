@@ -58,3 +58,6 @@
   - name: Configure GitLab
     ansible.builtin.include_role:       
       name: "demo.cloud.gitlab"
+      apply:
+        become: true
+
