@@ -12,6 +12,7 @@
         state: present
 
     - name: Install python depends
+      become: true
       ansible.builtin.pip:
         name: ['boto3', 'botocore']
         state: present
