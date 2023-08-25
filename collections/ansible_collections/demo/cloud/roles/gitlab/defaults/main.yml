@@ -61,6 +61,7 @@ gitlab_time_zone: "UTC"
 gitlab_backup_keep_time: "604800"
 gitlab_download_validate_certs: true
 gitlab_default_theme: '2'
+gitlab_timeout: 300
 
 # Email configuration.
 gitlab_email_enabled: false
