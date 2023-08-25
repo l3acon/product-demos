@@ -231,6 +231,7 @@ controller_templates:
             - windows_core
             - windows_full
             - rhel9
+            - rhel9_medium
             - rhel8
             - rhel7
             - al2023
@@ -531,7 +532,7 @@ controller_workflows:
         success_nodes:
           - Update Inventory
         extra_data:
-          vm_blueprint: "rhel9"
+          vm_blueprint: "rhel9_medium"
           create_vm_aws_region: "us-east-2"
           create_vm_vm_name: gitlab
           create_vm_vm_owner: "gitlab"
