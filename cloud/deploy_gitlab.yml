@@ -39,7 +39,7 @@
       become: true
 
     - name: Configure certificates (sanity)
-      ansible.builtin.include_role:       
+      ansible.builtin.include_role:
         name: "demo.cloud.certbot53"
         apply:
           become: true
@@ -60,4 +60,3 @@
         name: "demo.cloud.gitlab"
         apply:
           become: true
-

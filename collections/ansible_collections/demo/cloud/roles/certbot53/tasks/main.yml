@@ -41,7 +41,7 @@
   register: challenge_output
 
 - name: Debug challenge_output
-  debug:
+  ansible.builtin.debug:
     msg: "{{ challenge_output }}"
 
 - name: Fulfill challenge in route53
@@ -53,17 +53,17 @@
     type: TXT
     ttl: 60
     state: present
-    wait: yes
+    wait: false
     # Note: route53 requires TXT entries to be enclosed in quotes
     value: "{{ challenge_output.challenge_data[fqdn]['dns-01'].resource_value | regex_replace('^(.*)$', '\"\\1\"') }}"
-    overwrite: yes
-  when: 
-    - challenge_output is changed 
+    overwrite: true
+  when:
+    - challenge_output is changed
     - fqdn in challenge_output.challenge_data
 
 - name: Let the challenge be validated and retrieve the cert and intermediate certificate
   community.crypto.acme_certificate:
-    terms_agreed: yes
+    terms_agreed: true
     acme_version: "{{ acme_version }}"
     account_key_src: "{{ account_privatekey }}"
     account_email: "{{ account_email }}"
