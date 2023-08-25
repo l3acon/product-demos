@@ -3,61 +3,61 @@
   hosts: gitlab
   vars:
     cb53_hostname: "gitlab"
-    cb53_cert_dir:  "/root/cb53_certs/"
+    cb53_cert_dir: "/root/cb53_certs/"
   tasks:
-  - name: Install package depends
-    become: true
-    ansible.builtin.package:
-      name: ['python3-cryptography', 'python3-pip']
-      state: present
-
-  - name: Install python depends
-    ansible.builtin.pip:
-     name: ['boto3', 'botocore']
-     state: present
-
-  - name: Query route53 for all hosted zones
-    amazon.aws.route53_info:
-      query: hosted_zone
-    register: r53
-    delegate_to: localhost
-
-  - name: Set required variables
-    ansible.builtin.set_fact:
-      cb53_route53_zone: "{{ r53.HostedZones[0].Name[:-1] }}"
-
-  - name: debug
-    ansible.builtin.debug:
-      msg: "route53 Hosted Zone {{ cb53_route53_zone }}
-            domain: {{ cb53_hostname }}"
-
-  - name: Create certificate directory
-    ansible.builtin.file:       
-      path: "{{ cb53_cert_dir }}"
-      state: directory
-      mode: '0700'
-    become: true
-
-  - name: Configure certificates (sanity)
-    ansible.builtin.include_role:       
-      name: "demo.cloud.certbot53"
-      apply:
-        become: true
-    vars:
-      acme_env: staging
-
-  - name: Configure certificates (for real)
-    ansible.builtin.include_role: 
-      name: "demo.cloud.certbot53"
-      apply:
-        become: true
-    vars:
-      acme_env: production
-      acme_directory: "https://acme-v02.api.letsencrypt.org/directory"
-
-  - name: Configure GitLab
-    ansible.builtin.include_role:       
-      name: "demo.cloud.gitlab"
-      apply:
-        become: true
-
+    - name: Install package depends
+      become: true
+      ansible.builtin.package:
+        name: ['python3-cryptography', 'python3-pip']
+        state: present
+  
+    - name: Install python depends
+      ansible.builtin.pip:
+       name: ['boto3', 'botocore']
+       state: present
+  
+    - name: Query route53 for all hosted zones
+      amazon.aws.route53_info:
+        query: hosted_zone
+      register: r53
+      delegate_to: localhost
+  
+    - name: Set required variables
+      ansible.builtin.set_fact:
+        cb53_route53_zone: "{{ r53.HostedZones[0].Name[:-1] }}"
+  
+    - name: debug
+      ansible.builtin.debug:
+        msg: "route53 Hosted Zone {{ cb53_route53_zone }}
+              domain: {{ cb53_hostname }}"
+  
+    - name: Create certificate directory
+      ansible.builtin.file:
+        path: "{{ cb53_cert_dir }}"
+        state: directory
+        mode: '0700'
+      become: true
+  
+    - name: Configure certificates (sanity)
+      ansible.builtin.include_role:       
+        name: "demo.cloud.certbot53"
+        apply:
+          become: true
+      vars:
+        acme_env: staging
+  
+    - name: Configure certificates (for real)
+      ansible.builtin.include_role:
+        name: "demo.cloud.certbot53"
+        apply:
+          become: true
+      vars:
+        acme_env: production
+        acme_directory: "https://acme-v02.api.letsencrypt.org/directory"
+  
+    - name: Configure GitLab
+      ansible.builtin.include_role:
+        name: "demo.cloud.gitlab"
+        apply:
+          become: true
+  

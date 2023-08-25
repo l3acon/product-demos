@@ -562,4 +562,4 @@ controller_workflows:
           - Deploy GitLab
 
       - identifier: Deploy GitLab
-        unified_job_template:  Cloud / GitLab / Deploy
+        unified_job_template: Cloud / GitLab / Deploy
