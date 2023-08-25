@@ -44,7 +44,7 @@
   debug:
     msg: "{{ challenge_output }}"
 
-- name: fulfill challenge in route53
+- name: Fulfill challenge in route53
   amazon.aws.route53:
     aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default(aws_access_key) }}"
     aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | default(aws_secret_key) }}"
