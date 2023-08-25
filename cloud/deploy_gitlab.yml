@@ -56,6 +56,11 @@
         acme_directory: "https://acme-v02.api.letsencrypt.org/directory"
 
     - name: Configure GitLab
+      vars:
+        gitlab_ssl_certificate: "{{ certbot53_public_path }}"
+        gitlab_ssl_certificate_key: "{{ certbot53_private_path }}"
+        gitlab_registry_nginx_ssl_certificate: "{{ certbot53_public_path }}"
+        gitlab_registry_nginx_ssl_certificate_key: "{{ certbot53_private_path }}"
       ansible.builtin.include_role:
         name: "demo.cloud.gitlab"
         apply:
