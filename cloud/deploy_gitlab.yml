@@ -1,7 +1,6 @@
 ---
-
 - name: Deploy GitLab
-  hosts: "{{ gitlab_prefix_name }}-gitlab"
+  hosts: "{{ create_vm_vm_name }}"
   vars:
     cb53_hostname: "gitlab"
     cb53_cert_dir: "/root/cb53_certs/"

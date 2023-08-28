@@ -504,7 +504,7 @@ controller_workflows:
       spec:
         - question_name: Gitlab Prefix Name
           type: text
-          variable: gitlab_prefix_name
+          variable: create_vm_vm_name
           required: true
         - question_name: AWS Region
           type: multiplechoice
@@ -538,24 +538,8 @@ controller_workflows:
         extra_data:
           vm_blueprint: "rhel9"
           create_vm_aws_region: "us-east-2"
-          create_vm_vm_name: "{{ gitlab_prefix_name }}-gitlab"
           create_vm_vm_owner: "gitlab"
           create_vm_aws_instance_size: "t3.medium"
-          create_vm_vm_deployment: "gitlab"
-          create_vm_vm_environment: "Prod"
-          create_vm_aws_vpc_subnet_name: aws-test-subnet
-          create_vm_aws_keypair_name: aws-test-key
-          create_vm_aws_securitygroup_name: aws-test-sg
-
-      - identifier: Provision GitLab Runner
-        unified_job_template: Cloud / AWS / Create VM
-        success_nodes:
-          - Update Inventory
-        extra_data:
-          vm_blueprint: "rhel9"
-          create_vm_aws_region: "us-east-2"
-          create_vm_vm_name: "{{ gitlab_prefix_name }}-gitlab-runner"
-          create_vm_vm_owner: "gitlab"
           create_vm_vm_deployment: "gitlab"
           create_vm_vm_environment: "Prod"
           create_vm_aws_vpc_subnet_name: aws-test-subnet
