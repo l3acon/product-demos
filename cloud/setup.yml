@@ -452,6 +452,7 @@ controller_templates:
     credentials:
       - AWS
       - Demo Credential
+      - Controller Credential
     project: Ansible official demo project
     playbook: cloud/deploy_gitlab.yml
     inventory: Demo Inventory
@@ -602,6 +603,7 @@ controller_workflows:
         unified_job_template: Deploy Cloud Stack in AWS
         success_nodes:
           - Provision GitLab
+          - Provision GitLab Runner
         extra_data:
           create_vm_aws_region: "us-east-2"
           create_vm_aws_owner_tag: "gitlab"
@@ -617,6 +619,21 @@ controller_workflows:
           create_vm_aws_region: "us-east-2"
           create_vm_vm_owner: "gitlab"
           create_vm_aws_instance_size: "t3.medium"
+          create_vm_vm_deployment: "gitlab"
+          create_vm_vm_environment: "Prod"
+          create_vm_aws_vpc_subnet_name: aws-test-subnet
+          create_vm_aws_keypair_name: aws-test-key
+          create_vm_aws_securitygroup_name: aws-test-sg
+
+      - identifier: Provision GitLab Runner
+        unified_job_template: Cloud / AWS / Create Customized VM
+        success_nodes:
+          - Update Inventory
+        extra_data:
+          vm_blueprint: "rhel9"
+          create_vm_vm_name: "{% raw %}{{ create_vm_vm_name  }}{% endraw %}-runner"
+          create_vm_aws_region: "us-east-2"
+          create_vm_vm_owner: "gitlab"
           create_vm_vm_deployment: "gitlab"
           create_vm_vm_environment: "Prod"
           create_vm_aws_vpc_subnet_name: aws-test-subnet
