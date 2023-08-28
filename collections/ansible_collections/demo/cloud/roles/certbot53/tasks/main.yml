@@ -61,6 +61,10 @@
     - challenge_output is changed
     - fqdn in challenge_output.challenge_data
 
+- name: Wait a bit
+  ansible.builtin.wait_for:
+    timeout: 20
+
 - name: Let the challenge be validated and retrieve the cert and intermediate certificate
   community.crypto.acme_certificate:
     terms_agreed: true
@@ -76,7 +80,6 @@
     remaining_days: 60
     data: "{{ challenge_output }}"
   when: challenge_output is changed
-  retries: 3
 
 - name: Set stats for private key and full chain
   ansible.builtin.set_stats:
