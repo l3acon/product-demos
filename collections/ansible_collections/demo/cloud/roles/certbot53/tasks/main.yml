@@ -44,8 +44,8 @@
   ansible.builtin.debug:
     msg: "{{ challenge_output }}"
 
-# noqa 503
-- name: Fulfill challenge in route53
+
+- name: Fulfill challenge in route53 # noqa 503
   amazon.aws.route53:
     aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default(aws_access_key) }}"
     aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | default(aws_secret_key) }}"
@@ -66,8 +66,8 @@
   ansible.builtin.wait_for:
     timeout: 20
 
+- name: Let the challenge be validated and retrieve the cert and intermediate certificate 
 # noqa 503
-- name: Let the challenge be validated and retrieve the cert and intermediate certificate
   community.crypto.acme_certificate:
     terms_agreed: true
     acme_version: "{{ acme_version }}"
