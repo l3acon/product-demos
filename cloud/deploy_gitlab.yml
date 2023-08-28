@@ -1,5 +1,6 @@
 ---
 - name: Deploy GitLab
+  gather_facts: false
   hosts: "{{ create_vm_vm_name }}"
   vars:
     cb53_hostname: "gitlab"
@@ -12,6 +13,9 @@
         search_regex: OpenSSH
         delay: 10
       delegate_to: localhost
+
+    - name: Run setup
+      ansible.builtin.setup:
 
     - name: Install package depends
       become: true
