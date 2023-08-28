@@ -81,6 +81,12 @@
     data: "{{ challenge_output }}"
   when: challenge_output is changed
 
+- name: Set facts for private key and full chain
+  ansible.builtin.set_fact:
+    certbot53_public_path: "{{ fullchain_path }}"
+    certbot53_private_path: "{{ privatekey_path }}"
+  when: challenge_output is changed
+
 - name: Set stats for private key and full chain
   ansible.builtin.set_stats:
     data:

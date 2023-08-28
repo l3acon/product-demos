@@ -6,12 +6,7 @@
     cb53_hostname: "gitlab"
     cb53_cert_dir: "/root/cb53_certs/"
   tasks:
-    - name: debug
-      ansible.builtin.debug:
-        msg: "{{ hostvars }}"
-      delegate_to: localhost
-
-    - name: Wait 300 seconds for port 22 to become open and contain "OpenSSH"
+    - name: Wait for host to be listening for SSH connections
       ansible.builtin.wait_for:
         port: 22
         host: "{{ hostvars[create_vm_vm_name]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
