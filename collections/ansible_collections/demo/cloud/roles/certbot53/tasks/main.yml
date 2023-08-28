@@ -66,7 +66,7 @@
   ansible.builtin.wait_for:
     timeout: 20
 
-- name: Let the challenge be validated and retrieve the cert and intermediate certificate 
+- name: Let the challenge be validated and retrieve the cert and intermediate certificate
 # noqa 503
   community.crypto.acme_certificate:
     terms_agreed: true
