@@ -28,7 +28,7 @@
 
 - name: Create a challenge for `fqdn` using a account key file.
   community.crypto.acme_certificate:
-    terms_agreed: yes
+    terms_agreed: true
     acme_version: "{{ acme_version }}"
     account_key_src: "{{ account_privatekey }}"
     account_email: "{{ account_email }}"
@@ -63,7 +63,7 @@
 
 - name: Let the challenge be validated and retrieve the cert and intermediate certificate
   community.crypto.acme_certificate:
-    terms_agreed: yes
+    terms_agreed: true
     acme_version: "{{ acme_version }}"
     account_key_src: "{{ account_privatekey }}"
     account_email: "{{ account_email }}"

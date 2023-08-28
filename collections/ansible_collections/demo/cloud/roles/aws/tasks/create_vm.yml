@@ -24,24 +24,27 @@
     aws_instance_ami: >
       {{ (amis.images | selectattr('name', 'defined') | sort(attribute='creation_date'))[-2] }}
 
-- name: AWS| CREATE VM | create instance
-  amazon.aws.ec2_instance:
-    network:
-      assign_public_ip: true
-    key_name: "{{ aws_keypair_name }}"
-    instance_type: "{{ aws_instance_size }}"
-    image_id: "{{ aws_instance_ami.image_id }}"
-    region: "{{ aws_region }}"
-    security_group: "{{ aws_securitygroup_name }}"
-    tags:
-      blueprint: "{{ aws_blueprint }}"
-      purpose: "{{ aws_purpose_tag }}"
-      env: "{{ aws_env_tag }}"
-      ansible_group: "{{ aws_ansiblegroup_tag }}"
-      owner: "{{ aws_vm_owner }}"
-      info: "This instance was built by Red Hat Product Demos"
-      Name: "{{ aws_vm_name }}"
-    wait: "{{ aws_ec2_wait }}"
-    vpc_subnet_id: "{{ aws_subnet_id }}"
-    user_data: "{{ lookup('template', aws_userdata_template + '.j2', template_vars=dict(aws_vm_name=vm_name)) }}"
-  register: aws_vm_output
+- name: debug
+  msg: "{{ aws_instance_size }}"
+
+#- name: AWS| CREATE VM | create instance
+#  amazon.aws.ec2_instance:
+#    network:
+#      assign_public_ip: true
+#    key_name: "{{ aws_keypair_name }}"
+#    instance_type: "{{ aws_instance_size }}"
+#    image_id: "{{ aws_instance_ami.image_id }}"
+#    region: "{{ aws_region }}"
+#    security_group: "{{ aws_securitygroup_name }}"
+#    tags:
+#      blueprint: "{{ aws_blueprint }}"
+#      purpose: "{{ aws_purpose_tag }}"
+#      env: "{{ aws_env_tag }}"
+#      ansible_group: "{{ aws_ansiblegroup_tag }}"
+#      owner: "{{ aws_vm_owner }}"
+#      info: "This instance was built by Red Hat Product Demos"
+#      Name: "{{ aws_vm_name }}"
+#    wait: "{{ aws_ec2_wait }}"
+#    vpc_subnet_id: "{{ aws_subnet_id }}"
+#    user_data: "{{ lookup('template', aws_userdata_template + '.j2', template_vars=dict(aws_vm_name=vm_name)) }}"
+#  register: aws_vm_output
