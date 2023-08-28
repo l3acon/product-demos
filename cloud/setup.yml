@@ -626,12 +626,12 @@ controller_workflows:
           create_vm_aws_securitygroup_name: aws-test-sg
 
       - identifier: Provision GitLab Runner
-        unified_job_template: Cloud / AWS / Create Customized VM
+        unified_job_template: Cloud / AWS / Create VM
         success_nodes:
           - Update Inventory
         extra_data:
           vm_blueprint: "rhel9"
-          create_vm_vm_name: "{% raw %}{{ create_vm_vm_name  }}{% endraw %}-runner"
+          create_vm_vm_name: "{% raw %}{ { create_vm_vm_name  }}{% endraw %}-runner"
           create_vm_aws_region: "us-east-2"
           create_vm_vm_owner: "gitlab"
           create_vm_vm_deployment: "gitlab"
