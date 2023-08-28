@@ -602,7 +602,6 @@ controller_workflows:
         unified_job_template: Deploy Cloud Stack in AWS
         success_nodes:
           - Provision GitLab
-          - Provision GitLab Runner
         extra_data:
           create_vm_aws_region: "us-east-2"
           create_vm_aws_owner_tag: "gitlab"
