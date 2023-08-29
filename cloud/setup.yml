@@ -656,7 +656,6 @@ controller_workflows:
           create_vm_aws_vpc_subnet_name: aws-test-subnet
           create_vm_aws_keypair_name: aws-test-key
           create_vm_aws_securitygroup_name: aws-test-sg
-
       - identifier: Update Inventory
         unified_job_template: AWS Inventory
         success_nodes:
@@ -665,4 +664,4 @@ controller_workflows:
       - identifier: Deploy GitLab
         unified_job_template: Cloud / GitLab / Deploy
       - identifier: Deploy GitLab Runner
-        unified_job_template: Cloud / GitLab / Deploy Gitlab Runner
+        unified_job_template: Cloud / GitLab / Deploy Runner
