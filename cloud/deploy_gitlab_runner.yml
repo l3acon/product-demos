@@ -1,12 +1,12 @@
 ---
 - name: Deploy GitLab Runner
   gather_facts: false
-  hosts: "gitlab-3-runner"
+  hosts: "{{ gitlab_runner_host_name | default('gitlab-runner') }}"
   tasks:
     - name: Wait for host to be listening for SSH connections
       ansible.builtin.wait_for:
         port: 22
-        host: "{{ hostvars[create_vm_vm_name]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
+        host: "{{ hostvars[gitlab_runner_host_name]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
         search_regex: OpenSSH
         delay: 10
       delegate_to: localhost

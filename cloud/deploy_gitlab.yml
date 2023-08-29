@@ -1,28 +1,15 @@
 ---
 - name: Deploy GitLab
   gather_facts: false
-  hosts: "{{ create_vm_vm_name }}"
+  hosts: "{{ gitlab_host_name | default('gitlab') }}"
   vars:
     cb53_hostname: "gitlab"
     cb53_cert_dir: "/root/cb53_certs/"
   tasks:
-    - name: Create A record entry for GitLab
-      amazon.aws.route53:
-        aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default(aws_access_key) }}"
-        aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | default(aws_secret_key) }}"
-        zone: "{{ cb53_route53_zone }}"
-        record: "gitlab.{{ cb53_route53_zone }}"
-        type: A
-        ttl: 60
-        state: present
-        wait: false
-        value: "{{ public_ip }}"
-        overwrite: true
-    
     - name: Wait for host to be listening for SSH connections
       ansible.builtin.wait_for:
         port: 22
-        host: "{{ hostvars[create_vm_vm_name]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
+        host: "{{ hostvars[gitlab_host_name]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
         search_regex: OpenSSH
         delay: 10
       delegate_to: localhost
@@ -54,8 +41,21 @@
 
     - name: debug
       ansible.builtin.debug:
-        msg: "route53 Hosted Zone {{ cb53_route53_zone }}
-              domain: {{ cb53_hostname }}"
+        msg: "domain: {{ cb53_hostname }} in 
+          route53 Hosted Zone: {{ cb53_route53_zone }}"
+
+    - name: Create A record entry for Gitlab
+      amazon.aws.route53:
+        aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default(aws_access_key) }}"
+        aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | default(aws_secret_key) }}"
+        zone: "{{ cb53_route53_zone }}"
+        record: "gitlab.{{ cb53_route53_zone }}"
+        type: A
+        ttl: 60
+        state: present
+        wait: false
+        value: "{{ public_ip }}"
+        overwrite: true
 
     - name: Create certificate directory
       ansible.builtin.file:
