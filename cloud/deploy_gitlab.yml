@@ -6,6 +6,19 @@
     cb53_hostname: "gitlab"
     cb53_cert_dir: "/root/cb53_certs/"
   tasks:
+    - name: Create A record entry for GitLab
+      amazon.aws.route53:
+        aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default(aws_access_key) }}"
+        aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | default(aws_secret_key) }}"
+        zone: "{{ cb53_route53_zone }}"
+        record: "gitlab.{{ cb53_route53_zone }}"
+        type: A
+        ttl: 60
+        state: present
+        wait: false
+        value: "{{ public_ip }}"
+        overwrite: true
+    
     - name: Wait for host to be listening for SSH connections
       ansible.builtin.wait_for:
         port: 22

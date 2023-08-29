@@ -1,0 +1,18 @@
+---
+- name: Provision a VM, allow slightly more customization
+  gather_facts: false
+  hosts: localhost
+  tasks:
+    - name: Provision a VM
+      ansible.builtin.include_role:
+        name: "redhat_cop.controller_configuration.{{ item }}"
+      loop: "{{ controller_components }}"
+      delegate_to: localhost
+      vars:
+        controller_components:
+          - job_launch
+        controller_launch_jobs:
+          - name: Cloud / AWS / Create Customized VM
+            wait: true
+            extra_vars:
+             create_vm_vm_name: "{{ provision_vm_name }}"

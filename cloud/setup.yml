@@ -328,7 +328,6 @@ controller_templates:
           required: true
           default: aws-test-key
 
-
   - name: Cloud / AWS / Delete VM
     job_type: run
     organization: Default
@@ -461,6 +460,22 @@ controller_templates:
     notification_templates_error: Telemetry
     allow_simultaneous: true
 
+  - name: Cloud / GitLab / Deploy Runner
+    job_type: run
+    organization: Default
+    credentials:
+      - AWS
+      - Demo Credential
+      - Controller Credential
+    project: Ansible official demo project
+    playbook: cloud/deploy_gitlab_runner.yml
+    inventory: Demo Inventory
+    notification_templates_started: Telemetry
+    notification_templates_success: Telemetry
+    notification_templates_error: Telemetry
+    allow_simultaneous: true
+
+
 controller_workflows:
   - name: Deploy Cloud Stack in AWS
     description: A workflow to deploy a cloud stack
@@ -581,10 +596,6 @@ controller_workflows:
       name: ''
       description: ''
       spec:
-        - question_name: Gitlab Prefix Name
-          type: text
-          variable: create_vm_vm_name
-          required: true
         - question_name: AWS Region
           type: multiplechoice
           variable: create_vm_aws_region
@@ -599,23 +610,31 @@ controller_workflows:
           variable: aws_public_key
           required: true
     simplified_workflow_nodes:
-      - identifier: Create Cloud Stack
-        unified_job_template: Deploy Cloud Stack in AWS
+      - identifier: Create Keypair
+        unified_job_template: Cloud / AWS / Create Keypair
         success_nodes:
-          - Provision GitLab
-          - Provision GitLab Runner
-        extra_data:
-          create_vm_aws_region: "us-east-2"
-          create_vm_aws_owner_tag: "gitlab"
-          vm_environment: "Prod"
-          email: "git@gitlab.exmaple.com"
-
+          - Provision Gitlab
+          - Provision Gitlab Runner
+      - identifier: Create VPC
+        unified_job_template: Cloud / AWS / Create VPC
+        success_nodes:
+          - Provision Gitlab
+          - Provision Gitlab Runner
+#      - identifier: Ticket - Keypair Failed
+#        unified_job_template: 'SUBMIT FEEDBACK'
+#        extra_data:
+#          feedback: Failed to create AWS keypair
+#      - identifier: Ticket - Keypair Failed
+#        unified_job_template: 'SUBMIT FEEDBACK'
+#        extra_data:
+#          feedback: Failed to create AWS keypair
       - identifier: Provision GitLab
         unified_job_template: Cloud / AWS / Create Customized VM
         success_nodes:
           - Update Inventory
         extra_data:
           vm_blueprint: "rhel9"
+          create_vm_vm_name: "gitlab"
           create_vm_aws_region: "us-east-2"
           create_vm_vm_owner: "gitlab"
           create_vm_aws_instance_size: "t3.medium"
@@ -624,14 +643,12 @@ controller_workflows:
           create_vm_aws_vpc_subnet_name: aws-test-subnet
           create_vm_aws_keypair_name: aws-test-key
           create_vm_aws_securitygroup_name: aws-test-sg
-
-      - identifier: Provision GitLab Runner
+      - identifier: Provision Gitlab Runner
         unified_job_template: Cloud / AWS / Create VM
         success_nodes:
           - Update Inventory
         extra_data:
-          vm_blueprint: "rhel9"
-          create_vm_vm_name: "{% raw %}{ { create_vm_vm_name  }}{% endraw %}-runner"
+          create_vm_vm_name: "gitlab-runner"
           create_vm_aws_region: "us-east-2"
           create_vm_vm_owner: "gitlab"
           create_vm_vm_deployment: "gitlab"
@@ -644,6 +661,8 @@ controller_workflows:
         unified_job_template: AWS Inventory
         success_nodes:
           - Deploy GitLab
-
+          - Deploy GitLab Runner
       - identifier: Deploy GitLab
         unified_job_template: Cloud / GitLab / Deploy
+      - identifier: Deploy GitLab Runner
+        unified_job_template: Cloud / GitLab / Deploy Gitlab Runner
