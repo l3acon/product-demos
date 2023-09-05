@@ -16,7 +16,18 @@
 
     - name: Configure GitLab runner
       ansible.builtin.include_role:
-        name: "demo.cloud.gitlab-runner"
-        tasks_from: "runner"
+        name: "demo.geerlingguy.gitlab_runner"
         apply:
           become: true
+
+    - name: "Install depends"
+      ansible.builtin.package:
+        name: python3-pip
+        state: present
+
+    - name: "Install depends"
+      ansible.builtin.pip:
+        name: python-gitlab
+        state: present
+# create auth token
+# register runner
