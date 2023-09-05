@@ -16,7 +16,7 @@
 
     - name: Configure GitLab runner
       ansible.builtin.include_role:
-        name: "demo.geerlingguy.gitlab_runner"
+        name: "demo.geerlingguy.docker"
         apply:
           become: true
 
