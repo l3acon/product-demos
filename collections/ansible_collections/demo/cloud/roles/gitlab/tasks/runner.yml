@@ -2,4 +2,3 @@
 - name: Debug
   ansible.builtin.debug:
     msg: "hi"
-  

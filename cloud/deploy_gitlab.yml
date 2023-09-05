@@ -9,7 +9,7 @@
     - name: Wait for host to be listening for SSH connections
       ansible.builtin.wait_for:
         port: 22
-        host: "{{ hostvars[gitlab_host_name]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
+        host: "{{ hostvars[ansible_host]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
         search_regex: OpenSSH
         delay: 10
       delegate_to: localhost
@@ -41,8 +41,7 @@
 
     - name: debug
       ansible.builtin.debug:
-        msg: "domain: {{ cb53_hostname }} in 
-          route53 Hosted Zone: {{ cb53_route53_zone }}"
+        msg: "domain: {{ cb53_hostname }} in route53 Hosted Zone: {{ cb53_route53_zone }}"
 
     - name: Create A record entry for Gitlab
       amazon.aws.route53:

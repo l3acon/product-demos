@@ -6,7 +6,7 @@
     - name: Wait for host to be listening for SSH connections
       ansible.builtin.wait_for:
         port: 22
-        host: "{{ hostvars[gitlab_runner_host_name]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
+        host: "{{ hostvars[ansible_host]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
         search_regex: OpenSSH
         delay: 10
       delegate_to: localhost

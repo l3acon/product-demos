@@ -15,4 +15,4 @@
           - name: Cloud / AWS / Create Customized VM
             wait: true
             extra_vars:
-             create_vm_vm_name: "{{ provision_vm_name }}"
+              create_vm_vm_name: "{{ provision_vm_name }}"
