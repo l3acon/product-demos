@@ -43,7 +43,7 @@
 # restarts fix problems, so ignore failures on this run.
 - name: Reconfigure GitLab (first run).
   ansible.builtin.command: >
-    gitlab-ctl reconfigure
+    /opt/gitlab/bin/gitlab-ctl reconfigure
     creates=/var/opt/gitlab/bootstrapped
   failed_when: false
 
