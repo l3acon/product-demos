@@ -51,10 +51,6 @@
         - ansible_host is defined
         - ansible_host is ansible.utils.ipv4
 
-    - name: debug
-      ansible.builtin.debug:
-        msg: "domain: {{ cb53_hostname }} in route53 Hosted Zone: {{ cb53_route53_zone }}"
-
     - name: Create A record entry for Gitlab
       amazon.aws.route53:
         aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default(aws_access_key) }}"
