@@ -20,15 +20,16 @@
         apply:
           become: true
 
-    - name: "Install depends"
+    - name: Install python3-pip dependency  
       ansible.builtin.package:
         name: python3-pip
         state: present
       become: true
 
-    - name: "Install depends"
+    - name: Install python-gitlab pip dependency  
       ansible.builtin.pip:
         name: python-gitlab
         state: present
+
 # create auth token
 # register runner
