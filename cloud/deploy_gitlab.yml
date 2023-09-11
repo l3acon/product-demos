@@ -65,7 +65,7 @@
         ttl: 60
         state: present
         wait: false
-        value: "{{ public_ip }}"
+        value: "{{ gitlab_public_ipv4_address }}"
         overwrite: true
 
     - name: Create certificate directory
