@@ -41,7 +41,7 @@
 
 # Start and configure GitLab. Sometimes the first run fails, but after that,
 # restarts fix problems, so ignore failures on this run.
-e name: Reconfigure GitLab (first run).
+- name: Reconfigure GitLab (first run).
   ansible.builtin.command: >
     /opt/gitlab/bin/gitlab-ctl reconfigure
     creates=/var/opt/gitlab/bootstrapped
