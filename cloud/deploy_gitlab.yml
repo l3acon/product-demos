@@ -35,9 +35,21 @@
       register: r53
       delegate_to: localhost
 
-    - name: Set required variables
+    - name: Set certbot53 hosted zone
       ansible.builtin.set_fact:
         cb53_route53_zone: "{{ r53.HostedZones[0].Name[:-1] }}"
+
+    - name: Set gitlab public ipv4 address
+      ansible.builtin.set_fact:
+        gitlab_public_ipv4_address: "{{ public_ip }}"
+      when: public_ip is ansible.utils.ipv4
+
+    - name: Set gitlab public ipv4 address
+      ansible.builtin.set_fact:
+        gitlab_public_ipv4_address: "{{ ansible_host }}"
+      when: 
+        - ansible_host is defined
+        - ansible_host is ansible.utils.ipv4
 
     - name: debug
       ansible.builtin.debug:
