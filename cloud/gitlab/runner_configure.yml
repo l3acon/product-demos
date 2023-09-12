@@ -1,0 +1,20 @@
+---
+# This runs after gitlab has finished deploying
+- name: Configure gitlab runner 
+  gather_facts: false
+  hosts: "{{ gitlab_runner_host_name | default('gitlab-runner') }}"
+  tasks:
+
+    - name: 
+    - name: Wait for gitlab API to be up and healthy
+      ansible.builtin.wait_for:
+        port: 443
+        host: "{{ hostvars[ansible_host]['ansible_ssh_host']|default(ansible_host)|default(inventory_hostname) }}"
+        search_regex: OpenSSH
+        delay: 10
+      delegate_to: localhost
+
+    - name: ""
+
+# create auth token
+# register runner

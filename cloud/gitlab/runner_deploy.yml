@@ -30,6 +30,3 @@
       ansible.builtin.pip:
         name: python-gitlab
         state: present
-
-# create auth token
-# register runner

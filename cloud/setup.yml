@@ -453,7 +453,7 @@ controller_templates:
       - Demo Credential
       - Controller Credential
     project: Ansible official demo project
-    playbook: cloud/deploy_gitlab.yml
+    playbook: cloud/gitlab/deploy.yml
     inventory: Demo Inventory
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
@@ -468,13 +468,26 @@ controller_templates:
       - Demo Credential
       - Controller Credential
     project: Ansible official demo project
-    playbook: cloud/deploy_gitlab_runner.yml
+    playbook: cloud/gitlab/runner_deploy.yml
     inventory: Demo Inventory
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
     notification_templates_error: Telemetry
     allow_simultaneous: true
 
+  - name: Cloud / Gitlab / Configure Runner
+    job_type: run
+    organization: Default
+    credentials:
+      - Demo Credential
+      - Controller Credential
+    project: Ansible official demo project
+    playbook: cloud/gitlab/runner_configure.yml
+    inventory: Demo Inventory
+    notification_templates_started: Telemetry
+    notification_templates_success: Telemetry
+    notification_templates_error: Telemetry
+    allow_simultaneous: true
 
 controller_workflows:
   - name: Deploy Cloud Stack in AWS
@@ -663,5 +676,11 @@ controller_workflows:
           - Deploy Gitlab Runner
       - identifier: Deploy Gitlab
         unified_job_template: Cloud / Gitlab / Deploy
+        success_nodes:
+          - Configure Gitlab Runner
       - identifier: Deploy Gitlab Runner
+        unified_job_template: Cloud / Gitlab / Deploy Runner
+        success_nodes:
+          - Configure Gitlab Runner
+      - identifier: Configure Gitlab Runner
         unified_job_template: Cloud / Gitlab / Deploy Runner
