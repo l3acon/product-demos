@@ -250,7 +250,7 @@ controller_templates:
           required: true
           default: aws-test-key
 
-  - name: Cloud / AWS / Create Customized VM
+  - name: Cloud / AWS / Create VM
     job_type: run
     organization: Default
     credentials:
@@ -277,6 +277,10 @@ controller_templates:
             - us-east-2
             - us-west-1
             - us-west-2
+        - question_name: AWS Instance Type (defaults to blueprint value)
+          type: text
+          variable: create_vm_aws_instance_size
+          required: false
         - question_name: Name
           type: text
           variable: create_vm_vm_name
@@ -642,7 +646,7 @@ controller_workflows:
 #        extra_data:
 #          feedback: Failed to create AWS keypair
       - identifier: Provision Gitlab
-        unified_job_template: Cloud / AWS / Create Customized VM
+        unified_job_template: Cloud / AWS / Create VM
         success_nodes:
           - Update Inventory
         extra_data:
