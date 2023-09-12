@@ -683,4 +683,4 @@ controller_workflows:
         success_nodes:
           - Configure Gitlab Runner
       - identifier: Configure Gitlab Runner
-        unified_job_template: Cloud / Gitlab / Deploy Runner
+        unified_job_template: Cloud / Gitlab / Configure Runner
