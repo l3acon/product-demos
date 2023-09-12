@@ -37,7 +37,7 @@
 
     - name: Set certbot53 hosted zone
       ansible.builtin.set_fact:
-        cb53_route53_zone: "{{ r53.hosted_zones|first|name[:-1] }}"
+        cb53_route53_zone: "{{ r53.hosted_zones[0].name[:-1] }}"
 
     - name: Set gitlab public ipv4 address
       ansible.builtin.set_fact:
