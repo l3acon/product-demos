@@ -71,14 +71,6 @@
         mode: '0700'
       become: true
 
-    - name: Configure certificates (sanity)
-      ansible.builtin.include_role:
-        name: "demo.cloud.certbot53"
-        apply:
-          become: true
-      vars:
-        acme_env: staging
-
     - name: Configure certificates (for real)
       ansible.builtin.include_role:
         name: "demo.cloud.certbot53"

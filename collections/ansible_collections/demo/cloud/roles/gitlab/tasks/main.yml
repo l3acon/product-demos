@@ -7,7 +7,6 @@
   ansible.builtin.stat: path=/usr/bin/gitlab-ctl
   register: gitlab_file
 
-# Install GitLab and its dependencies.
 - name: Install GitLab dependencies.
   ansible.builtin.package:
     name: "{{ gitlab_dependencies }}"
@@ -53,12 +52,10 @@
     mode: 0600
   notify: Restart gitlab
 
-- name: Reconfigure GitLab (first run).
+- name: Reconfigure GitLab
   ansible.builtin.command: >
     /opt/gitlab/bin/gitlab-ctl reconfigure
     creates=/var/opt/gitlab/bootstrapped
   failed_when: false
   async: "{{ gitlab_timeout }}"
   poll: 5
-
-
