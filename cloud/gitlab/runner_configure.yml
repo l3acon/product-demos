@@ -17,13 +17,18 @@
         delay: 10
       delegate_to: localhost
 
-    - name: debug output
-      ansible.builtin.debug:
-        msg: "{{ initial_root_file }}"
-
-    - name: debug output
+    - name: Set intermediary
       ansible.builtin.set_fact:
-        initial_root_password: "{{ initial_root_file.content  | b64decode | from_yaml | selectattr('Password') }}"
+        password_from_file: "{{ initial_root_file.content  | b64decode }}"
+
+    - name: Debug output
+      ansible.builtin.debug:
+        msg: "{{ password_from_file }}"
+
+    - name: Debug output
+      ansible.builtin.debug:
+        msg: "{{ password_from_file | from_yaml }}"
+
 
 # create auth token
 # register runner
