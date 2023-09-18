@@ -27,11 +27,11 @@
 
     - name: Set intermediary
       ansible.builtin.set_fact:
-        gitlab_root_password: "{ gitlab_admin_file.Password }"
+        gitlab_root_password: "{{ gitlab_admin_file.Password }}"
 
     - name: Debug output
       ansible.builtin.debug:
-        msg: "{{gitlab_root_password}}"
+        msg: "{{ gitlab_root_password }}"
 
 # create auth token
 # register runner
