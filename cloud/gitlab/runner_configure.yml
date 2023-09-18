@@ -8,6 +8,7 @@
         src: /etc/gitlab/initial_root_password
       register: initial_root_file
       delegate_to: "{{ gitlab_host_name | default('gitlab') }}"
+      become: true
 
     - name: Wait for gitlab API to be up and healthy
       ansible.builtin.wait_for:
