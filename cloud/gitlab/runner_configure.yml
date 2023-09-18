@@ -18,11 +18,11 @@
 
     - name: debug output
       ansible.builtin.debug:
-      msg: "{{ initial_root_file }}"
+        msg: "{{ initial_root_file }}"
 
     - name: debug output
       ansible.builtin.debug:
-      msg: "{{ initial_root_file.content  | from_yaml }}"
+        msg: "{{ initial_root_file.content  | from_yaml }}"
 
 # create auth token
 # register runner
