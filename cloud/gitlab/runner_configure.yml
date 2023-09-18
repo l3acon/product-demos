@@ -22,8 +22,8 @@
         msg: "{{ initial_root_file }}"
 
     - name: debug output
-      ansible.builtin.debug:
-        msg: "{{ initial_root_file.content  | b64decode | from_yaml }}"
+      ansible.builtin.set_fact:
+        initial_root_password: "{{ initial_root_file.content  | b64decode | from_yaml | selectattr('Password') }}"
 
 # create auth token
 # register runner
