@@ -31,7 +31,7 @@
 
     - name: Debug output
       ansible.builtin.debug:
-        msg: "{{ password_from_file | from_yaml | map('extract', 'Password'}}"
+        msg: "{{ password_from_file | from_yaml | map('extract', 'Password') }}"
 
 # create auth token
 # register runner
