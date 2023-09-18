@@ -1,15 +1,28 @@
 ---
-# This runs after gitlab has finished deploying
 - name: Configure gitlab runner 
   gather_facts: false
   hosts: "{{ gitlab_runner_host_name | default('gitlab-runner') }}"
   tasks:
+    - name: Read in initial gitlab root password
+      ansible.builtin.slurp:
+        src: /etc/gitlab/initial_root_password
+      register: initial_root_file
+      delegate_to: "{{ gitlab_host_name | default('gitlab') }}"
+
     - name: Wait for gitlab API to be up and healthy
       ansible.builtin.wait_for:
         port: 443
         host: "{{ gitlab_fqdn }}"
         delay: 10
       delegate_to: localhost
+
+    - name: debug output
+      ansible.builtin.debug:
+      msg: "{{ initial_root_file }}"
+
+    - name: debug output
+      ansible.builtin.debug:
+      msg: "{{ initial_root_file.content  | from_yaml }}"
 
 # create auth token
 # register runner

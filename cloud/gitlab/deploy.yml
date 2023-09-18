@@ -95,3 +95,5 @@
       ansible.builtin.set_stats:
         data:
           gitlab_fqdn: "gitlab.{{ cb53_route53_zone }}"
+
+
