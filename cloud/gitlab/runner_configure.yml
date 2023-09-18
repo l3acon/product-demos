@@ -19,19 +19,19 @@
 
     - name: Set intermediary
       ansible.builtin.set_fact:
-        password_from_file: "{{ initial_root_file.content  | b64decode }}"
+        gitlab_admin_file: "{{ initial_root_file.content  | b64decode | from_yaml }}"
 
     - name: Debug output
       ansible.builtin.debug:
-        msg: "{{ password_from_file }}"
+        msg: "{{gitlab_admin_file}}"
+
+    - name: Set intermediary
+      ansible.builtin.set_fact:
+        gitlab_root_password: "{ gitlab_admin_file.Password }"
 
     - name: Debug output
       ansible.builtin.debug:
-        msg: "{{ password_from_file | from_yaml }}"
-
-    - name: Debug output
-      ansible.builtin.debug:
-        msg: "{{ password_from_file | from_yaml | map('extract', 'Password') }}"
+        msg: "{{gitlab_root_password}}"
 
 # create auth token
 # register runner
