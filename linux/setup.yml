@@ -30,6 +30,7 @@ controller_credential_types:
 controller_credentials:
   - name: Insights Inventory
     credential_type: Insights Collection
+    state: exists
     organization: Default
     inputs:
       insights_user: REPLACEME

@@ -25,6 +25,7 @@ controller_projects:
 controller_credentials:
   - name: AWS
     credential_type: Amazon Web Services
+    state: exists
     organization: Default
     update_secrets: false
     inputs:
