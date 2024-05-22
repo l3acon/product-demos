@@ -2,8 +2,7 @@
 - name: Install SSMS
   hosts: "{{ _hosts }}"
   vars:
-    exe_path: "C:\Users\Administrator\Downloads\SSMS-Setup-ENU.exe"
-    
+    exe_path: C:\Users\Administrator\Downloads\SSMS-Setup-ENU.exe
   tasks:
     - name: Install package
       ansible.windows.win_get_url:
