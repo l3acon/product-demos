@@ -74,7 +74,7 @@ controller_templates:
     credentials:
       - "Windows machine credential"
     extra_vars:
-        ssms_installation_source: "https://aka.ms/ssmsfullsetup"
+      ssms_installation_source: "https://aka.ms/ssmsfullsetup"
     survey_enabled: true
     survey:
       name: ''
@@ -98,7 +98,7 @@ controller_templates:
       - "VMWare vCenter Credential"
       - "Windows Administrator Password"
     extra_vars:
-      vmware_dns_severs: 10.15.168.254
+      vmware_dns_severs: 10.11.5.19
     survey_enabled: true
     survey:
       name: ''
