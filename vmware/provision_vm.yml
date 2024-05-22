@@ -1,0 +1,39 @@
+---
+#  vars:
+#    vm_name: <vm name>
+#    vm_template: <vm tempalte>
+#    vm_folder: <folder to clone vm into>
+#    vm_network: <network>
+
+- name: Provision a Windows VM from template
+  hosts: localhost
+  tasks:
+    - name: Register datacenter, assume first datacenter.
+      community.vmware.vmware_datacenter_info:
+      register: datacenter_info
+
+    - name: Register cluster, assume first cluster.
+      community.vmware.vmware_cluster_info:
+        datacenter: "{{ datacenter_info.datacenter_info[0].name }}"
+      register: cluster_info
+
+    - name:  Clone virtual machine from Windows template and customize
+      community.vmware.vmware_guest:
+        state: present
+        template: 
+        folder: "{{ vm_folder }}"
+        template: "{{ vm_template }}"
+        name: "{{ vm_name }}"
+        datacenter: "{{ datacenter_info.datacenter_info[0].name }}"
+        cluster: "{{ cluster_info.clusters|first }}"
+        networks: 
+          - name: "{{ vm_network }}"
+            type: dhcp
+        customization:
+          password: "{{ lookup('env', 'WIN_PASSWORD') }}"
+          autologon: true
+          autologoncount: 1
+          runonce: "netsh advfirewall set allprofiles state off"
+          dns_servers: "{{ vmware_dns_servers }}"
+          dns_suffix: []
+        wait_for_customization: true

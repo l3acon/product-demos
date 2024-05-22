@@ -1,0 +1,109 @@
+controller_credentials:
+  - name: VMWare vCenter Credential
+    credential_type: VMware vCenter
+    organization: Default
+    inputs:
+      insights_user: REPLACEME
+      insights_password: REPLACEME
+
+controller_inventory_sources:
+  - name: VMWare vCenter Inventory
+    inventory: Demo Inventory
+    source: VMware vCenter
+    credential: VMWare vCenter Credential
+
+controller_templates:
+  - name: "VMWARE / Provision Windows VM"
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Ansible official demo project"
+    playbook: "vmware/provision_vm.yml"
+    notification_templates_started: Telemetry
+    notification_templates_success: Telemetry
+    notification_templates_error: Telemetry
+    credentials:
+      - "VMWare vCenter"
+    survey_enabled: true
+    survey:
+      name: ''
+      description: ''
+      spec:
+        - question_name: VM Name
+          type: text
+          variable: vm_name
+          required: true
+        - question_name: Select tempalte
+          type: multiplechoice
+          variable: vm_template
+          choices:
+            - msws19_clt
+            - msw10
+          required: true
+        - question_name: Choose Folder
+          type: multiplechoice
+          variable: vm_folder
+          choices:
+            - /Datacenter/vm/matferna
+            - /Datacenter/vm/sdunne
+            - /Datacenter/vm/wlupton
+          required: true
+        - question_name: Select network
+          type: multiplechoice
+          variable: vm_network
+          choices:
+            - DSwitch-VM Network
+            - airgap-VLAN999
+          required: true
+
+  - name: "VMWARE / Delete VM"
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Ansible official demo project"
+    playbook: "vmware/delete_vm.yml"
+    notification_templates_started: Telemetry
+    notification_templates_success: Telemetry
+    notification_templates_error: Telemetry
+    credentials:
+      - "VMWare vCenter"
+    survey_enabled: true
+    survey:
+      name: ''
+      description: ''
+      spec:
+        - question_name: VM Name
+          type: text
+          variable: vm_name
+          required: true
+
+  - name: VMWARE / Windows/ Provision SQL Server
+    description: A workflow to provision new vCenter Windows VM with SQL Server deployed and configured.
+    organization: Default
+    notification_templates_started: Telemetry
+    notification_templates_success: Telemetry
+    notification_templates_error: Telemetry
+    simplified_workflow_nodes:
+      - identifier: Provision VM
+        unified_job_template: VMWARE / Provision Windows VM
+        extra_data:
+          vm_template: msws19_clt 
+          vm_network: DSwitch-VM Network
+          vm_folder: /Datacenter/vm/matferna
+          vm_name: sqlserver
+        failure_nodes:
+          - Delete VM
+        success_nodes:
+          - Inventory Sync
+      - identifier: Delete VM
+        unified_job_template: VMWARE / Delete VM
+        extra_data:
+          vm_name: sqlserver
+      - identifier: Inventory Sync
+        unified_job_template: VMWare vCenter Inventory
+      - identifier: Install SSMS
+        unified_job_template: Windows / Install SSMS
+        failure_nodes:
+          - Ticket - Provision Failed
+      - identifier: Ticket - Provision Failed
+        unified_job_template: 'SUBMIT FEEDBACK'
+        extra_data:
+          feedback: VMWARE / Windows/ Provision SQL Server  | Failed to provision SQL Server

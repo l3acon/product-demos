@@ -1,0 +1,8 @@
+---
+- name: Install SSMS
+  hosts: "{{ _hosts }}"
+  tasks:
+    - name: Install package
+      ansible.windows.win_package:
+        path: '{{ https://aka.ms/ssmsfullsetup }}'
+        arguments: /install /passive /norestart

@@ -1,0 +1,17 @@
+---
+#  vars:
+#    vm_name: <vm name>
+
+- name: Delete a VM
+  hosts: localhost
+  tasks:
+    - name: Shutdown vm to be removed.
+      community.vmware.vmware_guest_powerstate:
+        name: "{{ vm_name }}"
+        state: shutdown-guest
+        state_change_timeout: 200
+
+    - name:  Remove a virtual machine and associated components.
+      community.vmware.vmware_guest:
+        state: absent
+        name: "{{ vm_name }}"
