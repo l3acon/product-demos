@@ -98,7 +98,7 @@ controller_templates:
       - "VMWare vCenter Credential"
       - "Windows Administrator Password"
     extra_vars:
-      vmware_dns_severs: 10.11.5.19
+      vmware_dns_servers: 10.11.5.19
     survey_enabled: true
     survey:
       name: ''
