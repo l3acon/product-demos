@@ -4,10 +4,10 @@
   vars:
     exe_path: C:\Users\Administrator\Downloads\SSMS-Setup-ENU.exe
   tasks:
-    - name: Install package
-      ansible.windows.win_get_url:
-        url: "{{ ssms_installation_source }}"
-        dest: "{{ exe_path }}"
+#    - name: Download setup
+#      ansible.windows.win_get_url:
+#        url: "{{ ssms_installation_source }}"
+#        dest: "{{ exe_path }}"
 
     - name: Install package
       ansible.windows.win_package:
