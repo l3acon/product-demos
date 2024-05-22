@@ -74,7 +74,7 @@ controller_templates:
     credentials:
       - "Windows machine credential"
     extra_vars:
-      ssms_installation_source: "https://aka.ms/ssmsfullsetup"
+      ssms_installation_source: "https://download.microsoft.com/download/b/9/7/b97061b9-9b9c-4bc7-86de-22b262c016d1/SSMS-Setup-ENU.exe"
     survey_enabled: true
     survey:
       name: ''

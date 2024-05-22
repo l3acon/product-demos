@@ -2,14 +2,10 @@
 - name: Install SSMS
   hosts: "{{ _hosts }}"
   vars:
-    exe_path: C:\Users\Administrator\Downloads\SSMS-Setup-ENU.exe
+    timeout: 300
   tasks:
-#    - name: Download setup
-#      ansible.windows.win_get_url:
-#        url: "{{ ssms_installation_source }}"
-#        dest: "{{ exe_path }}"
-
     - name: Install package
       ansible.windows.win_package:
-        path: "{{ exe_path }}"
+        path: "{{ ssms_installation_source }}"
+        url_timeout: "{{ timeout }}"
         arguments: /install /passive /norestart
