@@ -1,6 +1,7 @@
 ---
 - name: Install SSMS
   hosts: "{{ _hosts }}"
+  gather_facts: false
   vars:
     timeout: 300
   tasks:

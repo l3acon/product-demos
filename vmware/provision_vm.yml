@@ -7,6 +7,7 @@
 
 - name: Provision a Windows VM from template
   hosts: localhost
+  gather_facts: false
   tasks:
     - name: Register datacenter, assume first datacenter.
       community.vmware.vmware_datacenter_info:

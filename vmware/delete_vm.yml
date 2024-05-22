@@ -4,6 +4,7 @@
 
 - name: Delete a VM
   hosts: localhost
+  gather_facts: false
   tasks:
     - name: Shutdown vm to be removed.
       community.vmware.vmware_guest_powerstate:
