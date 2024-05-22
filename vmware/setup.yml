@@ -1,18 +1,90 @@
+controller_execution_environments:
+  - name: VMWare EE / Community
+    image: quay.io/matferna/vmware_ee
+  - name: VMWare EE / REST
+    image: quay.io/matferna/vmware_rest
+
+controller_credential_types:
+  - name: Windows Password Injector
+    kind: cloud
+    inputs:
+      fields:
+        - id: windows_password
+          type: string
+          label: Windows Password
+          secret: true
+    injectors:
+      env:
+        WIN_PASSWORD: !unsafe '{{ windows_password }}'
+
 controller_credentials:
   - name: VMWare vCenter Credential
     credential_type: VMware vCenter
     organization: Default
+    state: exists
     inputs:
-      insights_user: REPLACEME
-      insights_password: REPLACEME
+      host: REPLACEME
+      username: REPLACEME
+      password: REPLACEME
+
+  - name: Windows Administrator Password
+    credential_type: Windows Password Injector
+    state: exists
+    organization: Default
+    inputs:
+      password: REPLACEME
+
+  - name: Windows machine credential
+    credential_type: machine
+    state: exists
+    organization: Default
+    inputs:
+      username: REPLACEME
+      password: REPLACEME
 
 controller_inventory_sources:
   - name: VMWare vCenter Inventory
     inventory: Demo Inventory
-    source: VMware vCenter
+    source: vmware
+    source_vars:
+      hostnames:
+        - config.name
     credential: VMWare vCenter Credential
+    execution_environment: VMWare EE / Community
 
+controller_groups:
+  - name: windows2019srv_64Guest
+    description: group for windows
+    inventory: Demo Inventory
+    variables:
+      ansible_connection: winrm
+      ansible_winrm_port: 5985
+      ansible_winrm_server_cert_validation: ignore
+      ansible_winrm_transport: ntlm
+     
 controller_templates:
+  - name: "WINDOWS / Install SSMS"
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Ansible official demo project"
+    playbook: "vmware/install_ssms.yml"
+    notification_templates_started: Telemetry
+    notification_templates_success: Telemetry
+    notification_templates_error: Telemetry
+    credentials:
+      - "Windows machine credential"
+    extra_vars:
+        ssms_installation_source: "https://aka.ms/ssmsfullsetup"
+    survey_enabled: true
+    survey:
+      name: ''
+      description: ''
+      spec:
+        - question_name: Server Name or Pattern
+          type: text
+          variable: _hosts
+          required: false
+
   - name: "VMWARE / Provision Windows VM"
     job_type: run
     inventory: "Demo Inventory"
@@ -21,8 +93,12 @@ controller_templates:
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
     notification_templates_error: Telemetry
+    execution_environment: VMWare EE / Community
     credentials:
-      - "VMWare vCenter"
+      - "VMWare vCenter Credential"
+      - "Windows Administrator Password"
+    extra_vars:
+      vmware_dns_severs: 10.15.168.254
     survey_enabled: true
     survey:
       name: ''
@@ -63,8 +139,9 @@ controller_templates:
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
     notification_templates_error: Telemetry
+    execution_environment: VMWare EE / Community
     credentials:
-      - "VMWare vCenter"
+      - "VMWare vCenter Credential"
     survey_enabled: true
     survey:
       name: ''
@@ -75,7 +152,8 @@ controller_templates:
           variable: vm_name
           required: true
 
-  - name: VMWARE / Windows/ Provision SQL Server
+controller_workflows:
+  - name: VMWARE / Windows / Provision SQL Server
     description: A workflow to provision new vCenter Windows VM with SQL Server deployed and configured.
     organization: Default
     notification_templates_started: Telemetry
@@ -99,11 +177,16 @@ controller_templates:
           vm_name: sqlserver
       - identifier: Inventory Sync
         unified_job_template: VMWare vCenter Inventory
+        success_nodes:
+          - Install SSMS
       - identifier: Install SSMS
-        unified_job_template: Windows / Install SSMS
+        unified_job_template: WINDOWS / Install SSMS
+        extra_data:
+          _hosts: sqlserver
         failure_nodes:
           - Ticket - Provision Failed
       - identifier: Ticket - Provision Failed
         unified_job_template: 'SUBMIT FEEDBACK'
         extra_data:
           feedback: VMWARE / Windows/ Provision SQL Server  | Failed to provision SQL Server
+          email: youremail@mail.com

@@ -4,5 +4,5 @@
   tasks:
     - name: Install package
       ansible.windows.win_package:
-        path: '{{ https://aka.ms/ssmsfullsetup }}'
+        path: "{{ ssms_installation_source}}"
         arguments: /install /passive /norestart
