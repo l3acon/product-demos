@@ -33,26 +33,6 @@ controller_templates:
           variable: iis_message
           required: true
 
-  - name: "WINDOWS / Install SSMS"
-    job_type: run
-    inventory: "Demo Inventory"
-    project: "Ansible official demo project"
-    playbook: "windows/install_ssms.yml"
-    notification_templates_started: Telemetry
-    notification_templates_success: Telemetry
-    notification_templates_error: Telemetry
-    credentials:
-      - "Demo Credential"
-    survey_enabled: true
-    survey:
-      name: ''
-      description: ''
-      spec:
-        - question_name: Server Name or Pattern
-          type: text
-          variable: _hosts
-          required: false
-
   - name: "WINDOWS / Patching"
     use_fact_cache: true
     job_type: check
