@@ -1,3 +1,4 @@
+---
 controller_execution_environments:
   - name: VMWare EE / Community
     image: quay.io/matferna/vmware_ee
@@ -21,7 +22,6 @@ controller_credentials:
   - name: VMWare vCenter Credential
     credential_type: VMware vCenter
     organization: Default
-    state: exists
     inputs:
       host: REPLACEME
       username: REPLACEME
@@ -29,14 +29,12 @@ controller_credentials:
 
   - name: Windows Administrator Password
     credential_type: Windows Password Injector
-    state: exists
     organization: Default
     inputs:
       password: REPLACEME
 
   - name: Windows machine credential
     credential_type: machine
-    state: exists
     organization: Default
     inputs:
       username: REPLACEME
@@ -61,7 +59,7 @@ controller_groups:
       ansible_winrm_port: 5985
       ansible_winrm_server_cert_validation: ignore
       ansible_winrm_transport: ntlm
-     
+
 controller_templates:
   - name: "WINDOWS / Install SSMS"
     job_type: run
@@ -163,7 +161,7 @@ controller_workflows:
       - identifier: Provision VM
         unified_job_template: VMWARE / Provision Windows VM
         extra_data:
-          vm_template: msws19_clt 
+          vm_template: msws19_clt
           vm_network: DSwitch-VM Network
           vm_folder: /Datacenter/vm/matferna
           vm_name: sqlserver

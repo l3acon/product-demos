@@ -1,12 +1,12 @@
 ---
 - name: Install SSMS
-  hosts: "{{ _hosts }}"
+  hosts: "{{ _hosts | default(omit) }}"
   gather_facts: false
   vars:
-    timeout: 300
+    url_default_timeout: 300
   tasks:
     - name: Install package
       ansible.windows.win_package:
         path: "{{ ssms_installation_source }}"
-        url_timeout: "{{ timeout }}"
+        url_timeout: "{{ url_default_timeout }}"
         arguments: /install /passive /norestart

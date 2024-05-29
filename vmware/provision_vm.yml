@@ -21,13 +21,12 @@
     - name:  Clone virtual machine from Windows template and customize
       community.vmware.vmware_guest:
         state: present
-        template: 
         folder: "{{ vm_folder }}"
         template: "{{ vm_template }}"
         name: "{{ vm_name }}"
         datacenter: "{{ datacenter_info.datacenter_info[0].name }}"
         cluster: "{{ cluster_info.clusters|first }}"
-        networks: 
+        networks:
           - name: "{{ vm_network }}"
             type: dhcp
         customization:
