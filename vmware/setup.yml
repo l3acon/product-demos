@@ -31,10 +31,10 @@ controller_credentials:
     credential_type: Windows Password Injector
     organization: Default
     inputs:
-      password: REPLACEME
+      windows_password: REPLACEME
 
   - name: Windows machine credential
-    credential_type: machine
+    credential_type: Machine
     organization: Default
     inputs:
       username: REPLACEME
