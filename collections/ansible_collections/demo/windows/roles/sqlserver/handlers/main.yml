@@ -1,0 +1,5 @@
+---
+- name: Restart sql
+  ansible.builtin.service:
+    name: "{{ sqlserver_service }}"
+    state: restarted

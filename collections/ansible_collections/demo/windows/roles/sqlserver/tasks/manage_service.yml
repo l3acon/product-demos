@@ -1,0 +1,5 @@
+---
+- name: Manage service
+  ansible.builtin.service:
+    name: sqlserveragent
+    state: "{{ service_state | default('started') }}"

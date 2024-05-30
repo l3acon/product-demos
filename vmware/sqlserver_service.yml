@@ -1,0 +1,11 @@
+---
+# vars:
+#   service_state: <started/stopped/restarted>
+- name: Manage mysql service
+  hosts: "{{ _hosts | default(omit) }}"
+  gather_facts: false
+  tasks:
+    - name: Include role
+      ansible.builtin.include_role:
+        name: demo.windows.sqlserver
+        tasks_from: manage_service.yml

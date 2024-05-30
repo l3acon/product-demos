@@ -1,0 +1,20 @@
+---
+# ssms
+sqlserver_ssms_product_id: "Microsoft SQL Server Management Studio"
+sqlserver_ssms_installation_source: "https://download.microsoft.com/download/b/9/7/b97061b9-9b9c-4bc7-86de-22b262c016d1/SSMS-Setup-ENU.exe"
+sqlserver_url_default_timeout: 300
+sqlserver_ssms_arguments: /install /passive /norestart
+
+# sqlserver
+sqlserver_tmp_path: C:\Temp
+sqlserver_service: sqlserveragent
+sqlserver_product_id: "Microsoft SQL Server SQL2017"
+sqlserver_configurationfile_path: C:\Temp\ConfigurationFile.ini
+sqlserver_install_dest: C:\Temp\SQLServer2017-SSEI-Dev.exe
+sqlserver_install_src: "files/SQLServer2017-SSEI-Dev.exe"
+sqlserver_arguments: /Q /IACCEPTSQLSERVERLICENSETERMS /ConfigurationFile={{sqlserver_configurationfile_path}}
+sqlserver_configurationfile_content:
+  options:
+    action: install
+    features: sql
+    instancename: mysqlserver

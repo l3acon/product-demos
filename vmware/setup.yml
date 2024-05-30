@@ -2,6 +2,8 @@
 controller_execution_environments:
   - name: VMWare EE / Community
     image: quay.io/matferna/vmware_ee
+  - name: Product-demos Updated
+    image: quay.io/matferna/pd-updated
   - name: VMWare EE / REST
     image: quay.io/matferna/vmware_rest
 
@@ -61,18 +63,17 @@ controller_groups:
       ansible_winrm_transport: ntlm
 
 controller_templates:
-  - name: "WINDOWS / Install SSMS"
+  - name: "WINDOWS / Install MS SQL"
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible official demo project"
-    playbook: "vmware/install_ssms.yml"
+    playbook: "vmware/install_sqlserver.yml"
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
     notification_templates_error: Telemetry
+    execution_environment: Product-demos Updated
     credentials:
       - "Windows machine credential"
-    extra_vars:
-      ssms_installation_source: "https://download.microsoft.com/download/b/9/7/b97061b9-9b9c-4bc7-86de-22b262c016d1/SSMS-Setup-ENU.exe"
     survey_enabled: true
     survey:
       name: ''

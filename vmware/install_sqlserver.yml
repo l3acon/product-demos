@@ -1,0 +1,8 @@
+---
+- name: Install SSMS
+  hosts: "{{ _hosts | default(omit) }}"
+  gather_facts: false
+  tasks:
+    - name: Include role
+      ansible.builtin.include_role:
+        name: demo.windows.sqlserver

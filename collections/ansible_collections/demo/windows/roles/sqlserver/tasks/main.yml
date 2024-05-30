@@ -1,0 +1,29 @@
+---
+- name: Install SSMS package
+  ansible.windows.win_package:
+    product_id: "{{ sqlserver_ssms_product_id }}"
+    path: "{{ sqlserver_ssms_installation_source }}"
+    url_timeout: "{{ sqlserver_url_default_timeout }}"
+    arguments: "{{  sqlserver_ssms_arguments }}"
+
+- name: Create Temp directory
+  ansible.windows.win_file:
+    path: "{{ sqlserver_tmp_path }}"
+    state: directory
+
+- name: Copy install media
+  ansible.windows.win_copy:
+    src: "{{ sqlserver_install_src }}"
+    dest: "{{ sqlserver_install_dest }}"
+
+- name: Render configuration file for installation
+  ansible.windows.win_copy:
+    content: "{{ sqlserver_configurationfile_content | community.general.to_ini }}"
+    dest: "{{ sqlserver_configurationfile_path }}"
+
+- name: Install package
+  ansible.windows.win_package:
+    product_id: "{{ sqlserver_product_id }}"
+    path: "{{ sqlserver_install_dest }}"
+    arguments:  "{{ sqlserver_arguments }}"
+  notify: Restart sql
