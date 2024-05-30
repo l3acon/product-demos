@@ -178,7 +178,7 @@ controller_workflows:
         unified_job_template: VMWare vCenter Inventory
         success_nodes:
           - Install SQLServer
-      - identifier: Install SSMS
+      - identifier: Install SQLServer
         unified_job_template: WINDOWS / Install SQLServer
         extra_data:
           _hosts: sqlserver
