@@ -63,7 +63,7 @@ controller_groups:
       ansible_winrm_transport: ntlm
 
 controller_templates:
-  - name: "WINDOWS / Install MS SQL"
+  - name: "WINDOWS / Install SQLServer"
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible official demo project"
@@ -177,9 +177,9 @@ controller_workflows:
       - identifier: Inventory Sync
         unified_job_template: VMWare vCenter Inventory
         success_nodes:
-          - Install SSMS
+          - Install SQLServer
       - identifier: Install SSMS
-        unified_job_template: WINDOWS / Install SSMS
+        unified_job_template: WINDOWS / Install SQLServer
         extra_data:
           _hosts: sqlserver
         failure_nodes:
