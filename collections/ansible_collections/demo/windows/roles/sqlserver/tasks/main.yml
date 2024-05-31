@@ -5,6 +5,7 @@
     path: "{{ sqlserver_ssms_installation_source }}"
     url_timeout: "{{ sqlserver_url_default_timeout }}"
     arguments: "{{  sqlserver_ssms_arguments }}"
+  when: sqlserver_install_ssms
 
 - name: Create Temp directory
   ansible.windows.win_file:
@@ -16,10 +17,16 @@
     src: "{{ sqlserver_install_src }}"
     dest: "{{ sqlserver_install_dest }}"
 
-- name: Render configuration file for installation
+- name: Render configuration file using variables for installation
   ansible.windows.win_copy:
     content: "{{ sqlserver_configurationfile_content | community.general.to_ini }}"
     dest: "{{ sqlserver_configurationfile_path }}"
+
+# - name: Copy over satic configuration file
+#   ansible.windows.win_copy:
+#     src: "files/config.ini"
+#     dest: "{{ sqlserver_configurationfile_path }}"
+#   register: output
 
 - name: Install package
   ansible.windows.win_package:

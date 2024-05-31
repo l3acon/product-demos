@@ -1,5 +1,5 @@
 ---
 - name: Manage service
-  ansible.builtin.service:
+  ansible.windows.win_service:
     name: sqlserveragent
     state: "{{ service_state | default('started') }}"

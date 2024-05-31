@@ -1,5 +1,5 @@
 ---
 - name: Restart sql
-  ansible.builtin.service:
+  ansible.windows.win_service:
     name: "{{ sqlserver_service }}"
     state: restarted
