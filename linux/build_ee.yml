@@ -1,0 +1,17 @@
+- name: Playbook to create custom EE
+  hosts: localhost
+  vars:
+    ee_pull_collections_from_hub: true
+    ee_builder_dir_clean: false
+    ee_builder_dir: "."
+    ee_update_base_images: false
+    ee_reg_credential: Automation Hub Container Registry
+    ee_base_image: registry.redhat.io/ansible-automation-platform-24/ee-minimal-rhel9:latest
+    ah_token: "{{ lookup('ansible.builtin.env', 'AH_API_TOKEN') }}"
+    ah_host: "{{ lookup('ansible.builtin.env', 'AH_HOST') }}"
+    #ee_registry_dest: "{{ lookup('ansible.builtin.env', 'REGISTRY_URL') }}"
+    #ee_registry_username: "{{ lookup('ansible.builtin.env', 'REGISTRY_USERNAME') }}"
+    #ee_registry_password: "{{ lookup('ansible.builtin.env', 'REGISTRY_PASSWORD') }}"
+    ee_verbosity: 1
+  roles:
+    - demo.cloud.ee_builder
