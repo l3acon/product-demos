@@ -4,6 +4,7 @@
 # for configuring collections and collection versions.
 collections:
   - name: ansible.controller
+    version: 4.6.0
 #  - name: infra.ah_configuration
 #    version: ">=2.0.6"
   - name: infra.controller_configuration
