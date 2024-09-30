@@ -1,0 +1,13 @@
+---
+plugin: servicenow.itsm.now
+table: cmdb_ci_linux_server
+fields: [ip_address,fqdn,host_name,sys_class_name,name,os]
+enhanced: yes
+keyed_groups:
+  - key: sn_sys_class_name | lower
+    prefix: ''
+    seperator: ''
+  - key: sn_os | lower
+    prefix: ''
+    separator: ''
+
