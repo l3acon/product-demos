@@ -1,0 +1,8 @@
+plugin: servicenow.itsm.now
+enhanced: yes
+keyed_groups:
+  - key: manufacturer
+    separator: ""
+compose:
+  ip_addr: ip_address
+  ansible_host: host_name

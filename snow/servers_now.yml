@@ -1,0 +1,7 @@
+---
+plugin: servicenow.itsm.now
+table: cmdb_ci_server
+keyed_groups:
+  - key: os
+    prefix: os
+
