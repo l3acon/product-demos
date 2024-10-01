@@ -45,11 +45,19 @@
             name: firewalld
             state: started
 
-        - name: Start firewalld
+        - name: Add http service
           ansible.posix.firewalld:
             service: http
             permanent: true
             state: enabled
+          register: add_http_service
+
+        - name: Reload firewalld
+          ansible.builtin.service:
+            name: firewalld
+            state: reloaded
+          when:
+            - add_http_service.changed
 
         - name: Build report server
           ansible.builtin.include_role:
