@@ -28,7 +28,7 @@
           comments: "Ansible is working on it!"
           state: "Assigned"
       register: sn_output
-      when: action is 'ack'
+      when: action == 'ack'
 
     - name: Update request
       servicenow.itsm.api:
@@ -39,7 +39,7 @@
           comments: "Provisioning complete "
           state: "Closed Complete"
       register: sn_output
-      when: action is 'close'
+      when: action == 'close'
 
     - name: Debug snow output
       ansible.builtin.debug:
