@@ -1,13 +1,11 @@
 ---
 controller_execution_environments:
-  - name: product-demos
-    image: quay.io/acme_corp/product-demos-ee:latest
   - name: Cloud Services Execution Environment
     image: quay.io/scottharwell/cloud-ee:latest
 
 controller_organizations:
   - name: Default
-    default_environment: product-demos
+    default_environment: Product Demos EE
 
 controller_projects:
   - name: Ansible Cloud Content Lab - AWS
@@ -78,7 +76,7 @@ controller_templates:
   - name: SUBMIT FEEDBACK
     job_type: run
     inventory: Demo Inventory
-    project: Ansible official demo project
+    project: Ansible Product Demos
     playbook: feedback.yml
     execution_environment: Default execution environment
     notification_templates_started: Telemetry
@@ -103,7 +101,7 @@ controller_templates:
     organization: Default
     credentials:
       - AWS
-    project: Ansible official demo project
+    project: Ansible Product Demos
     playbook: cloud/create_vpc.yml
     inventory: Demo Inventory
     notification_templates_started: Telemetry
@@ -133,7 +131,7 @@ controller_templates:
     organization: Default
     credentials:
       - AWS
-    project: Ansible official demo project
+    project: Ansible Product Demos
     playbook: cloud/aws_key.yml
     inventory: Demo Inventory
     notification_templates_started: Telemetry
