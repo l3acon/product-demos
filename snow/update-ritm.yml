@@ -1,0 +1,51 @@
+---
+- name: Update catalog item
+  hosts: localhost
+  vars:
+#    sn_req_number: RITM0010229
+#    request_num: 0f323669c3291e507f417623e4013141
+  tasks:
+#    - name: Query SN API RITM
+#      ansible.builtin.uri:
+#        url: "{{ lookup('ansible.builtin.env', 'SN_HOST') }}/api/now/table/sc_req_item?sysparm_display_value=number%3D{{ sn_req_number }}&sysparm_fields=sys_id&sysparm_limit=1"
+#        user: "{{ lookup('ansible.builtin.env', 'SN_USERNAME') }}"
+#        password: "{{ lookup('ansible.builtin.env', 'SN_PASSWORD') }}"
+#        method: GET
+#        force_basic_auth: true
+#        body_format: json
+#      register: sn_output
+#
+#    - name: Set sys_id var
+#      ansible.builtin.set_fact:
+#        sys_id: "{{ sn_output.json.result[0].sys_id}}"
+
+    - name: Update request
+      servicenow.itsm.api:
+        resource: sc_req_item
+        sys_id: "{{ request_num }}"
+        action: patch
+        data:
+          comments: "Ansible is working on it!"
+          state: "Assigned"
+      register: sn_output
+      when: action is 'ack'
+
+    - name: Update request
+      servicenow.itsm.api:
+        resource: sc_req_item
+        sys_id: "{{ request_num }}"
+        action: patch
+        data:
+          comments: "Provisioning complete "
+          state: "Closed Complete"
+      register: sn_output
+      when: action is 'close'
+
+    - name: Debug snow output
+      ansible.builtin.debug:
+        msg: "{{ sn_output }}"
+
+    - name: Debug sys_id
+      ansible.builtin.debug:
+        msg: "{{ request_num }}"
+
