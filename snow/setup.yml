@@ -1,0 +1,42 @@
+---
+# "!unsafe" used to pass raw jinja2 through to the injector definition, see
+# https://github.com/redhat-cop/controller_configuration/tree/devel/roles/credential_types#formating-injectors
+controller_credential_types:
+  - name: ServiceNow ITSM Credential
+    kind: cloud
+    inputs:
+      fields:
+        - id: instance
+          type: string
+          label: Instance
+        - id: username
+          type: string
+          label: Username
+        - id: password
+          type: string
+          label: Password
+          secret: true
+      required:
+        - instance
+        - username
+        - password
+    injectors:
+      env:
+        SN_HOST: !unsafe '{{instance}}'
+        SN_PASSWORD: !unsafe '{{password}}'
+        SN_USERNAME: !unsafe '{{username}}'
+
+controller_credentials:
+  - name: ServiceNow ITSM Credential
+    credential_type: ServiceNow ITSM Credential
+    organization: Default
+    state: exists
+    inputs:
+      instance: REPLACEME
+      username: REPLACEME
+      password: REPLACEME
+
+controller_execution_environments:
+  - name: ServiceNow EE
+    image: quay.io/matferna/snow_ee
+...
