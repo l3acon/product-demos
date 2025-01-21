@@ -6,6 +6,8 @@ images:
 
 dependencies:
   galaxy: requirements-25.yml
+  python:
+    - pywinrm>=0.4.3
   python_interpreter:
     python_path: /usr/bin/python3.11
 
@@ -22,6 +24,9 @@ options:
 
 additional_build_steps:
   prepend_base:
+    # AgnosticD can use this to deterine it is running from an EE
+    # see https://github.com/redhat-cop/agnosticd/blob/development/ansible/install_galaxy_roles.yml
+    - ENV LAUNCHED_BY_RUNNER=1
     - RUN $PYCMD -m pip install --upgrade pip setuptools
     - COPY _build/rpms/openshift-clients*.rpm /tmp/openshift-clients.rpm
     - RUN $PKGMGR -y update && $PKGMGR -y install bash-completion && $PKGMGR clean all
