@@ -57,7 +57,7 @@ controller_templates:
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
-    playbook: "openshift/cnv/provision_rhel.yml"
+    playbook: "openshift/cnv/provision_generic.yml"
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
     notification_templates_error: Telemetry
