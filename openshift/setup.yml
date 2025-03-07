@@ -53,6 +53,39 @@ controller_templates:
     credentials:
       - "OpenShift Credential"
 
+  - name: OpenShift / CNV / Create Generic VM
+    job_type: run
+    inventory: "Demo Inventory"
+    project: "Ansible Product Demos"
+    playbook: "openshift/cnv/provision_rhel.yml"
+    notification_templates_started: Telemetry
+    notification_templates_success: Telemetry
+    notification_templates_error: Telemetry
+    survey_enabled: true
+    allow_simultaneous: true
+    survey:
+      name: ''
+      description: ''
+      spec:
+        - question_name: VM name
+          type: text
+          variable: vm_name
+          default: rhel9
+          required: true
+        - question_name: VM NameSpace
+          type: text
+          variable: vm_namespace
+          default: openshift-cnv
+          required: true
+        - question_name: Definition
+          type: textarea
+          variable: vm_definition
+          max: 8192
+          required: true
+    credentials:
+      - "OpenShift Credential"
+
+
   - name: OpenShift / CNV / Create RHEL VM
     job_type: run
     inventory: "Demo Inventory"
