@@ -3,9 +3,9 @@ controller_execution_environments:
   - name: Cloud Services Execution Environment
     image: quay.io/scottharwell/cloud-ee:latest
 
-controller_organizations:
-  - name: Default
-    default_environment: Product Demos EE
+#controller_organizations:
+#  - name: Default
+#    default_environment: Product Demos EE
 
 controller_projects:
   - name: Ansible Cloud Content Lab - AWS
