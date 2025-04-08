@@ -362,7 +362,7 @@ controller_templates:
             - full
           required: true
 
-  - name: "DISA STIG"
+  - name: "DISA STIG for Linux"
     labels:
       - linux
       - compliance

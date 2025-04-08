@@ -1,4 +1,8 @@
 ---
+controller_labels:
+  - name: network
+    organization: Default
+
 user_message:
 
 controller_execution_environments:
@@ -29,7 +33,9 @@ controller_inventory_sources:
     source_path: network/hosts
 
 controller_templates:
-  - name: NETWORK / Configuration
+  - name: Configuration
+    labels:
+      - network
     organization: Default
     inventory: Demo Inventory
     survey_enabled: true
@@ -64,7 +70,9 @@ controller_templates:
             - snmp
             - user
 
-  - name: "NETWORK / Report"
+  - name: "Report"
+    labels:
+      - network
     job_type: check
     organization: Default
     inventory: Demo Inventory
@@ -93,7 +101,10 @@ controller_templates:
             - sandbox-nxos-1.cisco.com
             - routers
 
-  - name: "NETWORK / DISA STIG"
+  - name: "DISA STIG"
+    labels:
+      - network
+      - compliance
     job_type: check
     organization: Default
     inventory: Demo Inventory
@@ -108,7 +119,9 @@ controller_templates:
     ask_job_type_on_launch: true
     survey_enabled: true
 
-  - name: "NETWORK / Backup"
+  - name: "Backup"
+    labels:
+      - network
     job_type: run
     organization: Default
     inventory: Demo Inventory

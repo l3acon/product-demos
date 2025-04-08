@@ -363,7 +363,7 @@ controller_templates:
           default: 555-123456
           required: false
 
-  - name: "DISA STIG"
+  - name: "DISA STIG for Windows"
     labels:
       - windows
       - compliance
