@@ -2,6 +2,12 @@
 user_message: |
   ''
 
+controller_labels:
+  - name: windows
+    organization: Default
+  - name: windows.ad
+    organization: Default
+
 controller_projects:
   - name: Fact Scan
     organization: Default
@@ -9,7 +15,9 @@ controller_projects:
     scm_url: 'https://github.com/ansible/awx-facts-playbooks.git'
 
 controller_templates:
-  - name: "WINDOWS / Install IIS"
+  - name: "Install IIS"
+    labels:
+      - windows
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -33,7 +41,9 @@ controller_templates:
           variable: iis_message
           required: true
 
-  - name: "WINDOWS / Patching"
+  - name: "Patching"
+    labels:
+      - windows
     use_fact_cache: true
     job_type: check
     ask_job_type_on_launch: true
@@ -80,7 +90,9 @@ controller_templates:
             - 'Yes'
             - 'No'
 
-  - name: "WINDOWS / Rollback"
+  - name: "Rollback"
+    labels:
+      - windows
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -104,7 +116,9 @@ controller_templates:
           variable: rollback_msg
           required: false
 
-  - name: "WINDOWS / Test Connectivity"
+  - name: "Test Connectivity"
+    labels:
+      - windows
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -124,7 +138,9 @@ controller_templates:
           variable: _hosts
           required: false
 
-  - name: "WINDOWS / Chocolatey install multiple"
+  - name: "Chocolatey install multiple"
+    labels:
+      - windows
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -144,7 +160,9 @@ controller_templates:
           variable: _hosts
           required: false
 
-  - name: "WINDOWS / Chocolatey install specific"
+  - name: "Chocolatey install specific"
+    labels:
+      - windows
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -168,7 +186,9 @@ controller_templates:
           variable: package_name
           required: true
 
-  - name: "WINDOWS / Run PowerShell"
+  - name: "Run PowerShell"
+    labels:
+      - windows
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -193,7 +213,9 @@ controller_templates:
           default: "Get-Service | Where-Object -FilterScript {$_.Status -eq 'running'} | Select-Object -Property 'Name'"
           required: true
 
-  - name: "WINDOWS / Query Services"
+  - name: "Query Services"
+    labels:
+      - windows
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -221,7 +243,9 @@ controller_templates:
             - 'Running'
             - 'Stopped'
 
-  - name: "WINDOWS / Configuring Password Requirements"
+  - name: "Configuring Password Requirements"
+    labels:
+      - windows
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -241,7 +265,10 @@ controller_templates:
           variable: _hosts
           required: false
 
-  - name: "WINDOWS / AD / Create Domain"
+  - name: "Create Domain"
+    labels:
+      - windows
+      - windows.ad
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -261,7 +288,10 @@ controller_templates:
           variable: _hosts
           required: false
 
-  - name: "WINDOWS / AD / Join Domain"
+  - name: "AD / Join Domain"
+    labels:
+      - windows
+      - windows.ad
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -286,7 +316,10 @@ controller_templates:
           required: true
           description: Inventory hostname for domain controller previously established using the Create Domain template
 
-  - name: "WINDOWS / AD / New User"
+  - name: "AD / New User"
+    labels:
+      - windows
+      - windows.ad
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -330,7 +363,10 @@ controller_templates:
           default: 555-123456
           required: false
 
-  - name: "WINDOWS / DISA STIG"
+  - name: "DISA STIG"
+    labels:
+      - windows
+      - compliance
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -352,6 +388,9 @@ controller_templates:
 
 controller_workflows:
   - name: Setup Active Directory Domain
+    labels:
+      - windows
+      - windows.ad
     description: A workflow to create a domain controller with two domain-joined Windows hosts.
     organization: Default
     notification_templates_started: Telemetry
@@ -404,17 +443,17 @@ controller_workflows:
           default: aws-test-sg
     simplified_workflow_nodes:
       - identifier: Create Keypair
-        unified_job_template: Cloud / AWS / Create Keypair
+        unified_job_template: AWS / Create Keypair
         success_nodes:
           - Create VPC
       - identifier: Create VPC
-        unified_job_template: Cloud / AWS / Create VPC
+        unified_job_template: AWS / Create VPC
         success_nodes:
           - Create Domain Controller
           - Create Computer (1)
           - Create Computer (2)
       - identifier: Create Domain Controller
-        unified_job_template: Cloud / AWS / Create VM
+        unified_job_template: AWS / Create VM
         job_type: run
         extra_data:
           create_vm_vm_name: dc01
@@ -424,7 +463,7 @@ controller_workflows:
         success_nodes:
           - Inventory Sync
       - identifier: Create Computer (1)
-        unified_job_template: Cloud / AWS / Create VM
+        unified_job_template: AWS / Create VM
         job_type: run
         extra_data:
           create_vm_vm_name: winston
@@ -434,7 +473,7 @@ controller_workflows:
         success_nodes:
           - Inventory Sync
       - identifier: Create Computer (2)
-        unified_job_template: Cloud / AWS / Create VM
+        unified_job_template: AWS / Create VM
         job_type: run
         extra_data:
           create_vm_vm_name: winthrop
@@ -449,7 +488,7 @@ controller_workflows:
         success_nodes:
           - Test Connectivity
       - identifier: Test Connectivity
-        unified_job_template: WINDOWS / Test Connectivity
+        unified_job_template: Test Connectivity
         job_type: run
         extra_data:
           _hosts: deployment_domain_ansible_local
@@ -458,7 +497,7 @@ controller_workflows:
         success_nodes:
           - Create Domain
       - identifier: Create Domain
-        unified_job_template: WINDOWS / AD / Create Domain
+        unified_job_template: AD / Create Domain
         job_type: run
         extra_data:
           _hosts: purpose_domain_controller
@@ -467,7 +506,7 @@ controller_workflows:
         success_nodes:
           - Join Domain
       - identifier: Join Domain
-        unified_job_template: WINDOWS / AD / Join Domain
+        unified_job_template: AD / Join Domain
         job_type: run
         extra_data:
           _hosts: purpose_domain_computer
@@ -477,13 +516,13 @@ controller_workflows:
         success_nodes:
           - PowerShell Validation
       - identifier: Cleanup Resources
-        unified_job_template: WINDOWS / Rollback
+        unified_job_template: Rollback
         job_type: run
         extra_data:
           _hosts: localhost
           rollback_msg: "Domain setup failed. Cleaning up resources..."
       - identifier: PowerShell Validation
-        unified_job_template: WINDOWS / Run PowerShell
+        unified_job_template: Run PowerShell
         job_type: run
         extra_data:
           _hosts: purpose_domain_controller

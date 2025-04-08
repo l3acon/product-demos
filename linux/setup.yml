@@ -1,8 +1,14 @@
 ---
 user_message:
-  - Update the 'activation_key' and 'org_id' extra variables for 'LINUX / Register with Insights'. https://access.redhat.com/management/activation_keys
+  - Update the 'activation_key' and 'org_id' extra variables for 'Register with Insights'. https://access.redhat.com/management/activation_keys
   - Update Credential for Insights Inventory with Red Hat account.
   - Add variables for system_roles. https://console.redhat.com/ansible/automation-hub/repo/published/redhat/rhel_system_roles
+
+controller_labels:
+  - name: linux
+    organization: Default
+  - name: compliance
+    organization: Default
 
 # "!unsafe" used to pass raw jinja2 through to the injector definition, see
 # https://github.com/redhat-cop/controller_configuration/tree/devel/roles/credential_types#formating-injectors
@@ -41,7 +47,9 @@ controller_inventory_sources:
     credential: Insights Inventory
 
 controller_templates:
-  - name: "LINUX / Register with Insights"
+  - name: "Register with Insights"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -80,7 +88,9 @@ controller_templates:
           variable: org_id
           required: true
 
-  - name: "LINUX / Troubleshoot"
+  - name: "Troubleshoot"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -101,7 +111,9 @@ controller_templates:
           variable: _hosts
           required: true
 
-  - name: "LINUX / Temporary Sudo"
+  - name: "Temporary Sudo"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -130,7 +142,9 @@ controller_templates:
           default: 10
           required: true
 
-  - name: "LINUX / Patching"
+  - name: "Patching"
+    labels:
+      - linux
     job_type: check
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -153,7 +167,9 @@ controller_templates:
           variable: _hosts
           required: true
 
-  - name: "LINUX / Start Service"
+  - name: "Start Service"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -178,7 +194,9 @@ controller_templates:
           variable: service_name
           required: true
 
-  - name: "LINUX / Stop Service"
+  - name: "Stop Service"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -203,7 +221,9 @@ controller_templates:
           variable: service_name
           required: true
 
-  - name: "LINUX / Run Shell Script"
+  - name: "Run Shell Script"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -227,7 +247,9 @@ controller_templates:
           variable: shell_script
           required: true
 
-  - name: "LINUX / Fact Scan"
+  - name: "Fact Scan"
+    labels:
+      - linux
     project: "Ansible Product Demos"
     playbook: linux/fact_scan.yml
     inventory: Demo Inventory
@@ -248,7 +270,9 @@ controller_templates:
           variable: _hosts
           required: true
 
-  - name: "LINUX / Podman Webserver"
+  - name: "Podman Webserver"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -273,7 +297,9 @@ controller_templates:
           required: true
           default: "This is Apache webserver running in a container with podman"
 
-  - name: "LINUX / System Roles"
+  - name: "System Roles"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -300,7 +326,9 @@ controller_templates:
           variable: _hosts
           required: true
 
-  - name: "LINUX / Install Web Console (cockpit)"
+  - name: "Install Web Console (cockpit)"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -334,7 +362,10 @@ controller_templates:
             - full
           required: true
 
-  - name: "LINUX / DISA STIG"
+  - name: "DISA STIG"
+    labels:
+      - linux
+      - compliance
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -356,7 +387,10 @@ controller_templates:
           variable: _hosts
           required: true
 
-  - name: "LINUX / Multi-profile Compliance"
+  - name: "Multi-profile Compliance"
+    labels:
+      - linux
+      - compliance
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -402,7 +436,9 @@ controller_templates:
             - pci-dss
             - stig
 
-  - name: "LINUX / Multi-profile Compliance Report"
+  - name: "Multi-profile Compliance Report"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -442,7 +478,10 @@ controller_templates:
             - "false"
           default: "true"
 
-  - name: "LINUX / Insights Compliance Scan"
+  - name: "Insights Compliance Scan"
+    labels:
+      - linux
+      - compliance
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -467,7 +506,9 @@ controller_templates:
             - "No"
           default: "No"
 
-  - name: "LINUX / Deploy Application"
+  - name: "Deploy Application"
+    labels:
+      - linux
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"

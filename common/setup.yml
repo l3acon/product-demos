@@ -1,4 +1,8 @@
 ---
+controller_labels:
+  - name: cloud
+    organization: Default
+
 controller_execution_environments:
   - name: Cloud Services Execution Environment
     image: quay.io/scottharwell/cloud-ee:latest
@@ -98,7 +102,9 @@ controller_templates:
           variable: feedback
           required: true
 
-  - name: Cloud / AWS / Create VPC
+  - name: AWS / Create VPC
+    labels:
+      - cloud
     job_type: run
     organization: Default
     credentials:
@@ -128,8 +134,10 @@ controller_templates:
           variable: aws_owner_tag
           required: true
 
-  - name: Cloud / AWS / Create Keypair
+  - name: AWS / Create Keypair
     job_type: run
+    labels:
+      - cloud
     organization: Default
     credentials:
       - AWS
@@ -167,8 +175,10 @@ controller_templates:
           variable: aws_keypair_owner
           required: true
 
-  - name: Cloud / AWS / Create VM
+  - name: AWS / Create VM
     job_type: run
+    labels:
+      - cloud
     organization: Default
     credentials:
       - AWS
@@ -254,7 +264,9 @@ controller_templates:
           variable: create_vm_aws_image_filter
           required: false
 
-  - name: Cloud / AWS / Delete VM
+  - name: AWS / Delete VM
+    labels:
+      - cloud
     job_type: run
     organization: Default
     credentials:
@@ -285,6 +297,6 @@ controller_notifications:
       http_method: POST
       headers: {}
 
-#controller_settings:
-#  - name: SESSION_COOKIE_AGE
-#    value: 180000
+controller_settings:
+  - name: SESSION_COOKIE_AGE
+    value: 180000
