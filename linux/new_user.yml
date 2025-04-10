@@ -8,4 +8,4 @@
         name: "{{ _new_user }}"
         create_home: yes
         password: "{{ _password }}"
-        groups: "{{ default(omit) }}"
+        groups: "{{ _groups | default(omit) }}"
