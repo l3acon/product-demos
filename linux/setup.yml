@@ -140,7 +140,7 @@ controller_templates:
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
-    playbook: "linux/temp_sudo.yml"
+    playbook: "linux/new_user.yml"
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
     notification_templates_error: Telemetry
@@ -158,6 +158,10 @@ controller_templates:
         - question_name: User Name
           type: text
           variable: _new_user
+          required: true
+        - question_name: Password
+          type: text
+          variable: _password
           required: true
         - question_name: Groups
           type: text
