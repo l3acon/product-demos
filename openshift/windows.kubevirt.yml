@@ -3,9 +3,13 @@ plugin: redhat.openshift_virtualization.kubevirt
 strict: true
 connections:
   - namespaces:
-      - test-vms
+      - ansible-vms
 compose:
-  ansible_user: "'cloud-user' if 'rhel' in vmi_annotations['vm.kubevirt.io/os']"
+  ansible_user: "('Administrator' if 'windows' in vmi_annotations['vm.kubevirt.io/os'])"
+  ansible_connection: winrm
+  ansible_winrm_transport: basic
+  ansible_port: 5985
+
   vmi_annotations: "vmi_annotations | ansible.utils.replace_keys(target=[
                 {'before':'vm.kubevirt.io/os', 'after':'os'},
                 {'before':'vm.kubevirt.io/flavor', 'after':'flavor'},
