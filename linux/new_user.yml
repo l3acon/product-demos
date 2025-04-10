@@ -3,9 +3,9 @@
   become: true
   gather_facts: false
   tasks:
-    - name: Add the user 'johnd' with a specific uid and a primary group of 'admin'
+    - name: "Add the user {{ _new_user }}"
       ansible.builtin.user:
         name: "{{ _new_user }}"
         create_home: yes
-        password: "{{ _password }}"
+        password: "{{ _password | password_hash('sha512', 'new-user-hash') }}"
         groups: "{{ _groups | default(omit) }}"
