@@ -3,7 +3,7 @@ plugin: redhat.openshift_virtualization.kubevirt
 strict: true
 connections:
   - namespaces:
-      - ansible-vms
+      - test-vms
 compose:
   ansible_user: "('Administrator' if 'windows' in vmi_annotations['vm.kubevirt.io/os'])"
   ansible_connection: winrm
