@@ -3,5 +3,9 @@
   hosts: "{{ _hosts | default(omit) }}"
   become: true
   tasks:
-
-
+    - name: "Configure sshd"
+      include_role:
+        name: redhat.rhel_system_roles.sshd
+      vars:
+        sshd_skip_defaults: false
+        sshd_config: "{{ _sshd_config }}
