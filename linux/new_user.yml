@@ -1,0 +1,10 @@
+- name: Create a new user
+  hosts: "{{ _hosts | default(omit) }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Add the user 'johnd' with a specific uid and a primary group of 'admin'
+      ansible.builtin.user:
+        name: "{{ _new_user }}"
+        create_home: yes
+        groups: "{{ default(omit) }}"
