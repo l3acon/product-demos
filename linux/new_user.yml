@@ -7,5 +7,5 @@
       ansible.builtin.user:
         name: "{{ _new_user }}"
         create_home: yes
-        password: "{{ _password | password_hash('sha512', 'new-user-hash') }}"
+        password: "{{ _password | password_hash('sha512', 'newuserhash') }}"
         groups: "{{ _groups | default(omit) }}"
