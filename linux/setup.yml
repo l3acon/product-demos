@@ -80,7 +80,7 @@ controller_templates:
           variable: org_id
           required: true
 
-  - name: "LINUX / Configure SSH"
+  - name: "LINUX / Configure SSHD"
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
@@ -101,9 +101,10 @@ controller_templates:
           variable: _hosts
           required: true
 
-        - question_name: Server Name or Pattern
+        - question_name: SSHD Configuration
           type: textarea
           variable: _ssh_config
+          default: "PermitRootLogin: without-password"
           required: true
 
   - name: "LINUX / Temporary Sudo"
