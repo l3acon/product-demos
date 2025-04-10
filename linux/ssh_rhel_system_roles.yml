@@ -1,0 +1,7 @@
+---
+- name: 
+  hosts: "{{ _hosts | default(omit) }}"
+  become: true
+  tasks:
+
+
