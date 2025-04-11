@@ -1,0 +1,20 @@
+---
+- name: Configure SSHD
+  hosts: "{{ _hosts | default(omit) }}"
+  become: true
+  tasks:
+    - name: "Set facts"
+      ansible.builtin.set_fact:
+        sshd_config: "{{ _sshd_config | from_yaml }}"
+
+    - name: "Debug"
+      ansible.builtin.debug:
+        msg: "{{ item.key }} {{item.value }}"
+      loop: "{{ sshd_config | dict2items }}"
+       
+    - name: Ensure line in file
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^{{ item.key }}"
+        line: "{{ item.key }} {{ item.value }}"
+      loop: "{{ sshd_config | dict2items }}"
