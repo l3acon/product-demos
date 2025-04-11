@@ -3,6 +3,14 @@
   hosts: "{{ _hosts | default(omit) }}"
   become: true
   tasks:
+    - name: "Set facts"
+      ansible.builtin.set_fact:
+        sshd_config: "{{ _sshd_config | from_yaml }}"
+
+    - name: "Set facts"
+      ansible.builtin.debug:
+        msg: "{{ sshd_config }}"
+       
     - name: "Configure sshd"
       include_role:
         name: redhat.rhel_system_roles.sshd
