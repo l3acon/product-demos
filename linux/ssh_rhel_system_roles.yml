@@ -7,7 +7,7 @@
       ansible.builtin.set_fact:
         sshd_config: "{{ _sshd_config | from_yaml }}"
 
-    - name: "Set facts"
+    - name: "Debug"
       ansible.builtin.debug:
         msg: "{{ sshd_config }}"
        
