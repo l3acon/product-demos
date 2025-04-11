@@ -3,22 +3,33 @@
   hosts: "{{ _hosts | default(omit) }}"
   become: true
   tasks:
-    - name: "Set facts"
-      ansible.builtin.set_fact:
-        sshd_config: "{{ _sshd_config | from_yaml }}"
+    - name: Copy old sshd config
+      ansible.builtin.file:
+        src: /etc/ssh/sshd_config
+        dest: /tmp/sshd_config.bak
 
-    - name: "Debug"
-      ansible.builtin.debug:
-        msg: "{{ item.key }} {{item.value }}"
-      loop: "{{ sshd_config | dict2items }}"
-       
-    - name: "Ensure line in file"
-      ansible.builtin.lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: "^{{ item.key }}"
-        line: "{{ item.key }} {{ item.value }}"
-      loop: "{{ sshd_config | dict2items }}"
-      notify: "Restart sshd"
+    - name: Try to configure sshd
+      block:
+      - name: "Ensure line in file"
+        ansible.builtin.lineinfile:
+          path: /etc/ssh/sshd_config
+          regexp: "^{{ item.key }}"
+          line: "{{ item.key }} {{ item.value }}"
+        loop: "{{ sshd_config | dict2items }}"
+        notify: "Restart sshd"
+
+      - name: "Flush handlers"
+        meta: flush_handlers
+
+      rescue:
+      - name: Restore sshd config
+        ansible.builtin.file:
+          src: /tmp/sshd_config.bak
+          dest: /etc/ssh/sshd_config
+        notify: "Restart sshd"
+
+      - name: "Flush handlers"
+        meta: flush_handlers
 
   handlers:
     - name: "Restart sshd"
