@@ -4,9 +4,10 @@
   become: true
   tasks:
     - name: Copy old sshd config
-      ansible.builtin.file:
+      ansible.builtin.copy:
         src: /etc/ssh/sshd_config
         dest: /tmp/sshd_config.bak
+        remote_src: true
 
     - name: Try to configure sshd
       block:
