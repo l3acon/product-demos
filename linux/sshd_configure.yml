@@ -16,7 +16,7 @@
           path: /etc/ssh/sshd_config
           regexp: "^{{ item.key }}"
           line: "{{ item.key }} {{ item.value }}"
-        loop: "{{ sshd_config | dict2items }}"
+        loop: "{{ _sshd_config | from_yaml | dict2items }}"
         notify: "Restart sshd"
 
       - name: "Flush handlers"
@@ -24,9 +24,10 @@
 
       rescue:
       - name: Restore sshd config
-        ansible.builtin.file:
+        ansible.builtin.copy:
           src: /tmp/sshd_config.bak
           dest: /etc/ssh/sshd_config
+          remote_src: true
         notify: "Restart sshd"
 
       - name: "Flush handlers"
