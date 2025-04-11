@@ -12,9 +12,16 @@
         msg: "{{ item.key }} {{item.value }}"
       loop: "{{ sshd_config | dict2items }}"
        
-    - name: Ensure line in file
+    - name: "Ensure line in file"
       ansible.builtin.lineinfile:
         path: /etc/ssh/sshd_config
         regexp: "^{{ item.key }}"
         line: "{{ item.key }} {{ item.value }}"
       loop: "{{ sshd_config | dict2items }}"
+      notify: "Restart sshd"
+
+  handlers:
+    - name: "Restart sshd"
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
