@@ -80,11 +80,11 @@ controller_templates:
           variable: org_id
           required: true
 
-  - name: "LINUX / Configure SSHD"
+  - name: "LINUX / Configure SSH Server"
     job_type: run
     inventory: "Demo Inventory"
     project: "Ansible Product Demos"
-    playbook: "linux/ssh_rhel_system_roles.yml"
+    playbook: "linux/sshd_configure.yml"
     notification_templates_started: Telemetry
     notification_templates_success: Telemetry
     notification_templates_error: Telemetry
