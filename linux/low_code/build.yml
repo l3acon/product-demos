@@ -1,19 +1,19 @@
 ---
-- name: Expose job paths
-  hosts: localhost
-  become: false
-  gather_facts: false
-  vars:
-    ansible_connection: local
-  tasks:
-    - name: Add 
-      ansible.controller.settings:
-        name: "AWX_ISOLATION_SHOW_PATHS"
-        value: 
-          - "/var/lib/awx/projects/:/var/lib/awx/projects/:rw"
-          - "/etc/pki/ca-trust:/etc/pki/ca-trust:O"
-          - "/usr/share/pki:/usr/share/pki:O"
-
+#- name: Expose job paths
+#  hosts: localhost
+#  become: false
+#  gather_facts: false
+#  vars:
+#    ansible_connection: local
+#  tasks:
+#    - name: Add 
+#      ansible.controller.settings:
+#        name: "AWX_ISOLATION_SHOW_PATHS"
+#        value: 
+#          - "/var/lib/awx/projects/:/var/lib/awx/projects/:rw"
+#          - "/etc/pki/ca-trust:/etc/pki/ca-trust:O"
+#          - "/usr/share/pki:/usr/share/pki:O"
+#
 - name: Build controller dependencies for low-code Automation
   hosts: localhost
   become: true
