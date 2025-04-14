@@ -1,0 +1,9 @@
+---
+- name: This playbook does 
+{%- raw %}
+  hosts: "{{ _hosts | default(omit) }}"
+{% endraw %}
+  roles:
+{% for line in playbook_roles %}
+    - {{ line }}
+{%- endfor %}

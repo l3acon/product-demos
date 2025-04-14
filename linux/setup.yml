@@ -32,6 +32,11 @@ controller_credentials:
       insights_user: REPLACEME
       insights_password: REPLACEME
 
+controller_inventories:
+  - name: Controller Inventory
+    organization: Default
+    state: present
+
 controller_inventory_sources:
   - name: Insights Inventory
     inventory: Demo Inventory
@@ -40,7 +45,35 @@ controller_inventory_sources:
     source_path: linux/inventory.insights.yml
     credential: Insights Inventory
 
+
 controller_templates:
+  - name: "LINUX / Build Low-Code Automation"
+    job_type: run
+    inventory: "Controller Inventory"
+    project: "Ansible Product Demos"
+    playbook: "linux/low_code/build.yml"
+    notification_templates_started: Telemetry
+    notification_templates_success: Telemetry
+    notification_templates_error: Telemetry
+    credentials:
+      - "Demo Credential"
+      - "Controller Credential"
+    extra_vars:
+      collections:
+          - name: redhat.rhel_system_roles
+      playbook_roles:
+        - redhat.rhel_system_roles
+    survey_enabled: true
+    survey:
+      name: ''
+      description: ''
+      spec:
+        - question_name: Galaxy Token
+          type: password
+          description: See https://console.redhat.com/ansible/automation-hub/token
+          variable: galaxy_token
+          required: true
+
   - name: "LINUX / Register with Insights"
     job_type: run
     inventory: "Demo Inventory"

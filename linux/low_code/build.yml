@@ -1,0 +1,94 @@
+---
+- name: Build controller dependencies for low-code Automation
+  hosts: all
+  become: true
+  vars:
+    required_collections:
+  tasks:
+    - name: Install ansible-core
+      ansible.builtin.package:
+        name: ansible-core
+        state: present
+
+    - name: Initialize path 'manual' projects
+      ansible.builtin.file:
+        dest: /var/lib/awx/projects
+        state: directory
+        owner: awx
+        group: awx
+
+    - name: Create project folder
+      ansible.builtin.file:
+        dest: /var/lib/awx/projects/low_code
+        state: directory
+        owner: awx
+        group: awx
+
+    - name: Create collections folder
+      ansible.builtin.file:
+        dest: /var/lib/awx/projects/low_code/collections
+        state: directory
+        owner: awx
+        group: awx
+
+    - name: Template ansible.cfg
+      ansible.builtin.template:
+        dest: /var/lib/awx/projects/low_code/ansible.cfg
+        src: ansible.cfg.j2
+        owner: awx
+        group: awx
+
+    - name: Template requirements.yml
+      ansible.builtin.copy:
+        dest: /var/lib/awx/projects/low_code/requirements.yml
+        content: "{{ required_collections | to_yaml }}"
+        owner: awx
+        group: awx
+
+    - name: Pull collections
+      ansible.builtin.command: ansible-galaxy install -r requirements.yml -p collections/
+      become_user: awx
+      args:
+        chdir: /var/lib/awx/projects/low_code/
+      
+    - name: Template playbook
+      ansible.builtin.template:
+        dest: /var/lib/awx/projects/low_code/playbook.yml
+        src: playbook.yml.j2
+        owner: awx
+        group: awx
+
+- name: Build AAP resources for low-code Ansible
+  hosts: localhost
+  become: false
+  gather_facts: false
+  vars:
+    ansible_connection: local
+  tasks:
+    - name: Create AAP project
+      ansible.controller.project:
+        name: "Low-Code Automation"
+        local_path: "low_code"
+        organization: "Default"
+        scm_type: manual
+        state: present
+
+    - name: Create Job Template
+      ansible.controller.job_template:
+        name: "Run Low-Code Automation Job"
+        job_type: "run"
+        organization: "Default"
+        project: "Low-Code Automation"
+        inventory: "Demo Inventory"
+        playbook: "playbook.yml"
+        credentials: 
+          - "Demo Credential"
+        survey_enabled: yes
+        survey_spec:
+          name: ''
+          description: ''
+          spec:
+            - question_name: Server Name or Pattern
+              type: text
+              variable: _hosts
+              required: true
