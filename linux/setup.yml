@@ -44,7 +44,7 @@ controller_inventory_sources:
 controller_templates:
   - name: "LINUX / Build Low-Code Automation"
     job_type: run
-    inventory: "Demo Project"
+    inventory: "Demo Inventory"
     project: "Ansible Product Demos"
     playbook: "linux/low_code/build.yml"
     notification_templates_started: Telemetry

@@ -5,10 +5,10 @@
   vars:
     ansible_connection: local
   tasks:
-    - name: Install ansible-core
-      ansible.builtin.package:
-        name: ansible-core
-        state: present
+#    - name: Install ansible-core
+#      ansible.builtin.package:
+#        name: ansible-core
+#        state: present
 
     - name: Initialize path 'manual' projects
       ansible.builtin.file:
