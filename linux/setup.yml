@@ -32,11 +32,6 @@ controller_credentials:
       insights_user: REPLACEME
       insights_password: REPLACEME
 
-controller_inventories:
-  - name: Controller Inventory
-    organization: Default
-    state: present
-
 controller_inventory_sources:
   - name: Insights Inventory
     inventory: Demo Inventory
@@ -49,7 +44,7 @@ controller_inventory_sources:
 controller_templates:
   - name: "LINUX / Build Low-Code Automation"
     job_type: run
-    inventory: "Controller Inventory"
+    inventory: "Demo Project"
     project: "Ansible Product Demos"
     playbook: "linux/low_code/build.yml"
     notification_templates_started: Telemetry

@@ -1,6 +1,6 @@
 ---
 - name: Build controller dependencies for low-code Automation
-  hosts: all
+  hosts: localhost
   become: true
   vars:
     required_collections:
