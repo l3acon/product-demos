@@ -5,49 +5,33 @@
   vars:
     ansible_connection: local
   tasks:
-#    - name: Install ansible-core
-#      ansible.builtin.package:
-#        name: ansible-core
-#        state: present
-
     - name: Initialize path 'manual' projects
       ansible.builtin.file:
         dest: /var/lib/awx/projects
         state: directory
-        owner: awx
-        group: awx
 
     - name: Create project folder
       ansible.builtin.file:
         dest: /var/lib/awx/projects/low_code
         state: directory
-        owner: awx
-        group: awx
 
     - name: Create collections folder
       ansible.builtin.file:
         dest: /var/lib/awx/projects/low_code/collections
         state: directory
-        owner: awx
-        group: awx
 
     - name: Template ansible.cfg
       ansible.builtin.template:
         dest: /var/lib/awx/projects/low_code/ansible.cfg
         src: ansible.cfg.j2
-        owner: awx
-        group: awx
 
     - name: Template requirements.yml
       ansible.builtin.copy:
         dest: /var/lib/awx/projects/low_code/requirements.yml
         content: "{{ required_collections | to_yaml }}"
-        owner: awx
-        group: awx
 
     - name: Pull collections
       ansible.builtin.command: ansible-galaxy install -r requirements.yml -p collections/
-      become_user: awx
       args:
         chdir: /var/lib/awx/projects/low_code/
       
@@ -55,8 +39,6 @@
       ansible.builtin.template:
         dest: /var/lib/awx/projects/low_code/playbook.yml
         src: playbook.yml.j2
-        owner: awx
-        group: awx
 
 - name: Build AAP resources for low-code Ansible
   hosts: localhost
