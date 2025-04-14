@@ -3,7 +3,7 @@
   hosts: localhost
   become: true
   vars:
-    required_collections:
+    ansible_connection: local
   tasks:
     - name: Install ansible-core
       ansible.builtin.package:

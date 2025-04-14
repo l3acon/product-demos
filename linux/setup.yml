@@ -54,8 +54,9 @@ controller_templates:
       - "Demo Credential"
       - "Controller Credential"
     extra_vars:
-      collections:
-          - name: redhat.rhel_system_roles
+      required_collections:
+        collections:
+            - name: redhat.rhel_system_roles
       playbook_roles:
         - redhat.rhel_system_roles
     survey_enabled: true
