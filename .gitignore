@@ -12,3 +12,5 @@ roles/*
 .deployment_id
 .cache/
 .ansible/
+**/tmp/
+execution_environments/context/
