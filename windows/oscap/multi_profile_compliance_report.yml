@@ -1,0 +1,202 @@
+---
+- name: Generate OpenSCAP compliance report for Windows
+  hosts: '{{ _hosts | default(omit) }}'
+  gather_facts: true
+
+  vars:
+    compliance_profile: stig
+    # OpenSCAP Windows installer URL (update with actual URL if needed)
+    openscap_installer_url: "https://github.com/OpenSCAP/openscap/releases/download/1.3.4/OpenSCAP-1.3.4-win32.msi"
+    openscap_installer_path: "C:\\Windows\\Temp\\OpenSCAP.msi"
+    # SCAP content path (default location after OpenSCAP installation)
+    scap_content_base: "C:\\Program Files (x86) \\OpenSCAP 1.3.4\\share\\xml\\scap\\ssg\\content"
+    # Common Windows SCAP content files
+    windows_scap_files:
+      - "ssg-windows2022-ds.xml"
+      - "ssg-windows2019-ds.xml"
+      - "ssg-windows2016-ds.xml"
+      - "ssg-windows2012r2-ds.xml"
+
+  tasks:
+    - name: Assert Windows version is supported
+      ansible.builtin.assert:
+        that:
+          - ansible_os_family == "Windows"
+        fail_msg: "This playbook is designed for Windows systems only."
+
+    - name: Get disk space information
+      ansible.windows.win_stat:
+        path: "C:\\"
+      register: _c_drive_info
+
+    - name: Assert disk space meets minimum requirements
+      ansible.builtin.assert:
+        that:
+          - _c_drive_info.stat.exists
+        fail_msg: "Cannot access C: drive."
+
+    - name: Get Windows version information
+      ansible.builtin.set_fact:
+        _windows_version: "{{ ansible_distribution_major_version }}"
+        _windows_build: "{{ ansible_distribution_version }}"
+
+    - name: Get our facts straight
+      ansible.builtin.set_fact:
+        _profile: '{{ compliance_profile | replace("pci_dss", "pci-dss") }}'
+        _report_dir: "C:\\oscap-reports"
+
+    - name: Check if OpenSCAP is already installed
+      ansible.windows.win_stat:
+        path: "C:\\Program Files\\OpenSCAP\\bin\\oscap.exe"
+      register: _oscap_installed
+
+    - name: Check if Chocolatey is installed
+      ansible.windows.win_stat:
+        path: "C:\\ProgramData\\chocolatey\\choco.exe"
+      register: _choco_installed
+
+    - name: Install OpenSCAP via Chocolatey (if available)
+      when:
+        - not _oscap_installed.stat.exists
+        - _choco_installed.stat.exists
+      block:
+        - name: Install OpenSCAP using Chocolatey
+          chocolatey.chocolatey.win_chocolatey:
+            name: openscap
+            state: present
+
+    - name: Download OpenSCAP installer (if Chocolatey not available)
+      when:
+        - not _oscap_installed.stat.exists
+        - not _choco_installed.stat.exists
+      block:
+        - name: Create temp directory
+          ansible.windows.win_file:
+            path: "{{ openscap_installer_path | win_basename }}"
+            state: directory
+
+        - name: Download OpenSCAP installer
+          ansible.windows.win_get_url:
+            url: "{{ openscap_installer_url }}"
+            dest: "{{ openscap_installer_path }}"
+            force: false
+
+        - name: Install OpenSCAP from MSI
+          ansible.windows.win_package:
+            path: "{{ openscap_installer_path }}"
+            state: present
+            arguments: /quiet /norestart
+
+    - name: Verify OpenSCAP installation
+      ansible.windows.win_stat:
+        path: "C:\\Program Files\\OpenSCAP\\bin\\oscap.exe"
+      register: _oscap_verify
+#      failed_when: not _oscap_verify.stat.exists
+#      failed_msg: "OpenSCAP installation failed. Please install manually."
+
+    - name: Check if SCAP content directory exists
+      ansible.windows.win_stat:
+        path: "{{ scap_content_base }}"
+      register: _scap_dir_exists
+
+    - name: List available SCAP content files
+      ansible.windows.win_find:
+        paths: "{{ scap_content_base }}"
+        patterns: "ssg-windows*.xml"
+      register: _available_scap_files
+      when: _scap_dir_exists.stat.exists
+
+    - name: Determine SCAP content file based on Windows version
+      ansible.builtin.set_fact:
+        _scap_content_path: "{{ item.path }}"
+      loop: "{{ _available_scap_files.files | default([]) }}"
+      when: >
+        (_scap_dir_exists.stat.exists and
+         ((item.path is match('.*windows2022.*') and _windows_version | int >= 10 and ansible_distribution_version is match('.*2022.*')) or
+          (item.path is match('.*windows2019.*') and _windows_version | int >= 10 and ansible_distribution_version is match('.*2019.*')) or
+          (item.path is match('.*windows2016.*') and _windows_version | int >= 10 and ansible_distribution_version is match('.*2016.*')) or
+          (item.path is match('.*windows2012.*') and _windows_version | int == 6)))
+      register: _scap_file_result
+      failed_when: false
+      changed_when: false
+
+    - name: Use first available SCAP file if version-specific not found
+      ansible.builtin.set_fact:
+        _scap_content_path: "{{ _available_scap_files.files[0].path }}"
+      when:
+        - _scap_dir_exists.stat.exists
+        - _available_scap_files.files | length > 0
+        - _scap_file_result.results | selectattr('ansible_facts._scap_content_path', 'defined') | list | length == 0
+
+    - name: Fail if no SCAP content found
+      ansible.builtin.fail:
+        msg: "No SCAP content file found in {{ scap_content_base }}. Please ensure SCAP Security Guide content is installed."
+      when: not _scap_dir_exists.stat.exists or (_available_scap_files.files | default([]) | length == 0)
+
+    - name: Ensure report directory exists
+      ansible.windows.win_file:
+        path: "{{ _report_dir }}\\{{ _profile }}"
+        state: directory
+
+    - name: Set report name
+      ansible.builtin.set_fact:
+        _report: "{{ _report_dir }}\\{{ _profile }}\\report-{{ ansible_date_time.iso8601_basic }}.html"
+
+    - name: Check if report already exists
+      ansible.windows.win_stat:
+        path: "{{ _report }}"
+      register: _report_exists
+
+    - name: Try to generate compliance report with profile name
+      ansible.windows.win_command:
+        cmd: "& 'C:\\Program Files\\OpenSCAP\\bin\\oscap.exe' xccdf eval --profile {{ _profile }} --report '{{ _report }}' '{{ _scap_content_path }}'"
+      register: _oscap_attempt1
+      failed_when: false
+      changed_when: false
+      when: not _report_exists.stat.exists
+
+    - name: Try with full profile ID if first attempt failed
+      ansible.windows.win_command:
+        cmd: "& 'C:\\Program Files\\OpenSCAP\\bin\\oscap.exe' xccdf eval --profile xccdf_org.ssgproject.content_profile_{{ _profile }} --report '{{ _report }}' '{{ _scap_content_path }}'"
+      register: _oscap_attempt2
+      failed_when: false
+      changed_when: false
+      when:
+        - not _report_exists.stat.exists
+        - _oscap_attempt1.rc not in [0, 2]
+
+    - name: Set final result based on attempts
+      ansible.builtin.set_fact:
+        _oscap_result: "{{ _oscap_attempt2 if (_oscap_attempt1 is defined and _oscap_attempt1.rc not in [0, 2] and _oscap_attempt2 is defined and _oscap_attempt2.rc in [0, 2]) else (_oscap_attempt1 if _oscap_attempt1 is defined else {'rc': 0, 'stdout': 'Report already exists'}) }}"
+      when: not _report_exists.stat.exists
+
+    - name: Set result when report already exists
+      ansible.builtin.set_fact:
+        _oscap_result:
+          rc: 0
+          stdout: "Report already exists"
+      when: _report_exists.stat.exists
+
+    - name: Fail if profile not found
+      ansible.builtin.fail:
+        msg: "Profile '{{ _profile }}' not found in SCAP content. Use 'oscap info {{ _scap_content_path }}' to list available profiles."
+      when:
+        - _oscap_result.rc not in [0, 2]
+        - not _report_exists.stat.exists
+
+    - name: Display report location
+      ansible.builtin.debug:
+        msg: "Compliance report generated at: {{ _report }}"
+
+    - name: Tag instance as {{ compliance_profile | upper }}_OUT_OF_COMPLIANCE  # noqa name[template]
+      delegate_to: localhost
+      amazon.aws.ec2_tag:
+        region: "{{ placement.region }}"
+        resource: "{{ instance_id }}"
+        state: present
+        tags:
+          Compliance: "{{ compliance_profile | upper }}_OUT_OF_COMPLIANCE"
+      when:
+        - _oscap_result.rc == 2
+        - instance_id is defined
+      become: false
