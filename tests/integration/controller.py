@@ -1,6 +1,7 @@
 """Small Controller client with bounded requests and no response-body logging."""
 
 from urllib.parse import urljoin, urlparse
+import re
 import time
 
 import requests
@@ -62,8 +63,37 @@ class Controller:
         if missing_ok and response.status_code == 404:
             return None
         if not 200 <= response.status_code < 300:
+            detail = ""
+            if (
+                response.status_code == 400
+                and isinstance(data, dict)
+                and isinstance(data.get("inputs"), dict)
+            ):
+                try:
+                    rejected = response.json().get("inputs", {})
+                except (ValueError, AttributeError):
+                    rejected = {}
+                # Validation messages can contain submitted secrets. Publish field IDs only.
+                fields = sorted(
+                    name
+                    for name in data["inputs"]
+                    if name
+                    in {
+                        "host",
+                        "username",
+                        "password",
+                        "oauth_token",
+                        "verify_ssl",
+                        "request_timeout",
+                        "ssh_key_data",
+                        "ssh_key_unlock",
+                    }
+                    and re.search(r"\b" + re.escape(name) + r"\b", str(rejected))
+                )
+                if fields:
+                    detail = "; rejected credential input fields: " + ", ".join(fields)
             raise ControllerError(
-                f"Controller API {method} returned HTTP {response.status_code}"
+                f"Controller API {method} returned HTTP {response.status_code}" + detail
             )
         # Inventory deletion is asynchronous: Controller returns an empty 202.
         if method == "DELETE" or response.status_code == 204:

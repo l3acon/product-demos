@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from controller import Controller, ControllerError
 from report import render
-from run import Runner, fresh_machine_inputs, public_runtime, variables
+from run import Runner, callback_inputs, fresh_machine_inputs, public_runtime, variables
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -83,7 +83,47 @@ class FakeController:
             "job_templates",
             self.template_data("APD | Multi-demo setup", "multi_select_setup.yml"),
         )
+        callback_type = self.add(
+            "credential_types",
+            {
+                "name": "Red Hat Ansible Automation Platform",
+                "inputs": {
+                    "fields": [
+                        {
+                            "id": key,
+                            "type": "boolean" if key == "verify_ssl" else "string",
+                        }
+                        for key in (
+                            "host",
+                            "username",
+                            "password",
+                            "oauth_token",
+                            "verify_ssl",
+                            "request_timeout",
+                        )
+                    ]
+                },
+            },
+        )
+        self.callback = self.add(
+            "credentials",
+            {
+                "name": "AAP Credential",
+                "organization": self.org,
+                "credential_type": callback_type["id"],
+                "inputs": {},
+            },
+        )
         self.initial = copy.deepcopy(self.objects)
+
+    def credential_inputs(self):
+        return {
+            "host": "https://aap.example.test",
+            "username": "admin",
+            "password": "DO-NOT-REPORT",
+            "oauth_token": "",
+            "verify_ssl": True,
+        }
 
     def template_data(self, name, playbook):
         return {
@@ -198,6 +238,20 @@ class FakeController:
 
     def patch(self, path, data):
         self.calls.append(("PATCH", path, copy.deepcopy(data)))
+        if path == self.callback["url"] and "inputs" in data:
+            schema = self.objects[
+                f"/api/controller/v2/credential_types/{self.callback['credential_type']}/"
+            ]["inputs"]["fields"]
+            types = {field["id"]: field.get("type", "string") for field in schema}
+            for name, value in data["inputs"].items():
+                expected = {"string": str, "integer": int, "boolean": bool}.get(
+                    types.get(name)
+                )
+                if expected is None or type(value) is not expected:
+                    raise ControllerError(
+                        "Controller API PATCH returned HTTP 400; invalid input field: "
+                        + name
+                    )
         self.objects[path].update(copy.deepcopy(data))
         return self.get(path)
 
@@ -424,6 +478,53 @@ class RunnerTests(unittest.TestCase):
         )
         self.assertEqual(runner.report["coverage"]["LINUX | Fact Scan"], "passed")
         self.assertEqual(runner.report["coverage"]["Patch Dev"], "not_selected")
+        self.assertEqual(
+            self.api.get(self.api.callback["url"])["inputs"]["request_timeout"], "10"
+        )
+
+    def test_callback_timeout_follows_installed_schema_and_remains_optional(self):
+        connection = self.api.credential_inputs()
+        base_fields = [{"id": key, "type": "string"} for key in connection]
+        for type_, expected in (("string", "10"), ("integer", 10), ("number", 10)):
+            schema = {
+                "inputs": {
+                    "fields": [*base_fields, {"id": "request_timeout", "type": type_}]
+                }
+            }
+            self.assertEqual(
+                callback_inputs(connection, schema)["request_timeout"], expected
+            )
+        self.assertNotIn(
+            "request_timeout",
+            callback_inputs(connection, {"inputs": {"fields": base_fields}}),
+        )
+        self.assertNotIn("request_timeout", connection)
+
+    def test_callback_update_failure_has_its_own_case_and_never_provisions(self):
+        original = self.api.patch
+
+        def reject(path, data):
+            if path == self.api.callback["url"]:
+                raise ControllerError(
+                    "Controller API PATCH returned HTTP 400; rejected credential input fields: request_timeout"
+                )
+            return original(path, data)
+
+        self.api.patch = reject
+        runner = self.runner()
+        self.assertEqual(runner.run(), 1)
+        self.assertTrue(runner.report["runtime"]["compatible"])
+        self.assertFalse(runner.cloud_started or runner.network_started)
+        failure = next(
+            case
+            for case in runner.report["cases"]
+            if case["name"] == "AAP callback credential"
+        )
+        self.assertEqual(failure["status"], "failed")
+        self.assertIn("request_timeout", failure["summary"])
+        self.assertNotIn(
+            "DO-NOT-REPORT", (self.args.output / "report.json").read_text()
+        )
 
     def test_runtime_failure_prevents_all_provisioning(self):
         self.api.runtime_ok = False
@@ -783,6 +884,28 @@ class RunnerTests(unittest.TestCase):
 
 
 class ClientAndReportTests(unittest.TestCase):
+    def test_credential_validation_errors_report_field_ids_without_rejected_values(
+        self,
+    ):
+        session = Mock()
+        session.request.return_value.status_code = 400
+        session.request.return_value.json.return_value = {
+            "inputs": [
+                "request_timeout: 10 is not of type string",
+                "password: DO-NOT-REPORT",
+            ]
+        }
+        client = Controller(
+            "https://aap.example.test", "user", "secret", session=session
+        )
+        with self.assertRaises(ControllerError) as raised:
+            client.patch(
+                "/api/controller/v2/credentials/1/",
+                {"inputs": {"password": "DO-NOT-REPORT", "request_timeout": 10}},
+            )
+        self.assertIn("request_timeout", str(raised.exception))
+        self.assertNotIn("DO-NOT-REPORT", str(raised.exception))
+
     def test_existing_opaque_machine_secrets_are_not_replaced(self):
         existing = {
             "username": "ec2-user",

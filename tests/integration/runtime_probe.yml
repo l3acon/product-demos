@@ -24,8 +24,15 @@
           ci_runtime: '{{ ci_probe.stdout | from_json }}'
         per_host: false
 
-    - name: Require source-compatible collections
+    - name: Require candidate runtime compatibility
+      vars:
+        ci_runtime: '{{ ci_probe.stdout | from_json }}'
       ansible.builtin.assert:
         that:
-          - (ci_probe.stdout | from_json).compatible | bool
-        fail_msg: Candidate image has missing or incompatible collections; see the runtime metadata in the CI report.
+          - ci_runtime.compatible | bool
+        fail_msg: >-
+          Candidate EE validation failed (Ansible core {{ ci_runtime.core }}).
+          Collections={{ ci_runtime.collections | rejectattr('status', 'equalto', 'compatible') | map(attribute='name') | join(', ') | default('none', true) }};
+          missing Python packages={{ ci_runtime.packages | dict2items | selectattr('value', 'none') | map(attribute='key') | join(', ') | default('none', true) }};
+          failed tools={{ ci_runtime.tools | dict2items | rejectattr('value') | map(attribute='key') | join(', ') | default('none', true) }}.
+          See the runtime metadata in the CI report for versions and source constraints.

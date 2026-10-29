@@ -190,6 +190,14 @@ rollback of all category setup changes.
 - The runner waits for terminal-job event ingestion and recovers runtime metadata
   from structured `set_stats` or probe-command events when `job.artifacts` is empty.
   Failed collections, Python packages and tools appear in the report and log summary.
+- The Controller runtime assertion also names failed collections, missing Python
+  packages and failing tools. Compare the job ID with the report's runtime case;
+  the broad **Configure baseline** Actions step also includes later API updates.
+- AAP callback credential updates read the installed credential type's input
+  schema. A string timeout is sent as `"10"`, numeric schemas receive `10`, and
+  types without that field omit it. This avoids sending an integer to AAP's string
+  field. Callback failures have a separate report case; HTTP 400 diagnostics expose
+  recognized field IDs only, never rejected values or raw server validation text.
 - JSON/JUnit/HTML contain only selected metadata and normalized failure categories.
   Raw stdout, exception bodies, credential inputs and environment dumps are not
   uploaded. Inspect job IDs in Controller when detailed debugging is needed.

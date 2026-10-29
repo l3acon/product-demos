@@ -89,6 +89,30 @@ def fresh_machine_inputs(existing, key_factory=None):
     return inputs
 
 
+def callback_inputs(connection, credential_type):
+    """Apply the installed credential schema instead of assuming version-based types."""
+    fields = {
+        field["id"]: field
+        for field in credential_type.get("inputs", {}).get("fields", [])
+    }
+    if not fields or set(connection) - fields.keys():
+        raise ControllerError(
+            "AAP callback credential type does not support the protected connection fields"
+        )
+    result = dict(connection)
+    if "request_timeout" in fields:
+        type_ = fields["request_timeout"].get("type", "string")
+        if type_ == "string":
+            result["request_timeout"] = "10"
+        elif type_ in ("integer", "number"):
+            result["request_timeout"] = 10
+        else:
+            raise ControllerError(
+                "AAP callback credential has an unsupported request_timeout field type"
+            )
+    return result
+
+
 def failure_category(message):
     message = str(message).lower()
     for pattern, category in (
@@ -771,6 +795,25 @@ class Runner:
             passed = self.workflow_children(result) and passed
         return passed, result
 
+    def refresh_callback(self):
+        callback = self.api.unique("credentials", "AAP Credential", self.org)
+        try:
+            credential_type = self.api.get(
+                f"/api/controller/v2/credential_types/{callback['credential_type']}/"
+            )
+            inputs = callback_inputs(self.api.credential_inputs(), credential_type)
+            self.api.patch(callback["url"], {"inputs": inputs})
+        except ControllerError as error:
+            self.case("AAP callback credential", "failed", summary=str(error))
+            raise ControllerError(
+                "AAP callback credential refresh failed before category setup; infrastructure was not provisioned"
+            ) from None
+        self.case(
+            "AAP callback credential",
+            "passed",
+            summary="Refreshed from the protected connection; no credential values are reported.",
+        )
+
     def setup(self):
         machine = self.api.unique("credentials", "APD Machine Credential", self.org)
         original_inputs = machine.get("inputs", {})
@@ -782,17 +825,7 @@ class Runner:
             "passed",
             summary="Existing authentication preserved; missing test SSH key/password initialized without export.",
         )
-        if hasattr(self.api, "credential_inputs"):
-            callback = self.api.unique("credentials", "AAP Credential", self.org)
-            inputs = self.api.credential_inputs()
-            if self.series == "27":
-                inputs["request_timeout"] = 10
-            self.api.patch(callback["url"], {"inputs": inputs})
-            self.case(
-                "AAP callback credential",
-                "passed",
-                summary="Refreshed from the protected connection; no credential values are reported.",
-            )
+        self.refresh_callback()
         self.bind()
         ok, _ = self.launch("APD | Single demo setup", {"demo": "cloud"})
         if not ok:
