@@ -117,7 +117,8 @@
         network:
           assign_public_ip: true
           delete_on_termination: true
-        tenancy: "{{ create_vm_aws_tenancy }}"
+        placement:
+          tenancy: "{{ create_vm_aws_tenancy }}"
         key_name: "{{ create_vm_aws_keypair_name }}"
         instance_type: "{{ create_vm_aws_instance_size }}"
         image_id: "{{ create_vm_aws_instance_ami | trim }}"

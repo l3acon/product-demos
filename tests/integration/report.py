@@ -1,20 +1,33 @@
 """Render sanitized CI records; raw Controller responses are never report inputs."""
 
 from collections import Counter
-from html import escape
 import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
+
+from report_view import dashboard, job_url, status
 
 
 def render(report, directory):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     rows = report.get("cases", [])
-    counts = Counter(row["status"] for row in rows)
+    cleanup_checks = [
+        {
+            "name": "Cleanup / " + row.get("resource", "resource"),
+            "kind": "cleanup",
+            "status": "failed"
+            if row.get("status") == "retained"
+            else status(row.get("status")),
+            "summary": row.get("summary", ""),
+        }
+        for row in report.get("cleanup", [])
+    ]
+    checks = rows + cleanup_checks
+    counts = Counter(row["status"] for row in checks)
     (directory / "report.json").write_text(json.dumps(report, indent=2) + "\n")
-    suite = ET.Element("testsuite", name="APD integration", tests=str(len(rows)))
-    for row in rows:
+    suite = ET.Element("testsuite", name="APD integration", tests=str(len(checks)))
+    for row in checks:
         test = ET.SubElement(
             suite, "testcase", name=row["name"], classname=row.get("kind", "preflight")
         )
@@ -26,14 +39,16 @@ def render(report, directory):
             ET.SubElement(test, "skipped", message=row.get("summary", "Not executed"))
     suite.set(
         "failures",
-        str(sum(row["status"] in ("failed", "timed_out", "canceled") for row in rows)),
+        str(
+            sum(row["status"] in ("failed", "timed_out", "canceled") for row in checks)
+        ),
     )
     suite.set(
         "skipped",
         str(
             sum(
                 row["status"] in ("blocked", "not_selected", "not_reached")
-                for row in rows
+                for row in checks
             )
         ),
     )
@@ -49,87 +64,7 @@ def render(report, directory):
         ", ".join(f"{count} {status}" for status, count in sorted(counts.items()))
         or "No cases completed"
     )
-    metadata = report.get("metadata", {})
-    items = "".join(
-        f"<dt>{escape(str(k))}</dt><dd>{escape(str(v))}</dd>"
-        for k, v in metadata.items()
-    )
-    body = "".join(
-        "<tr>"
-        + "".join(
-            f"<td>{escape(str(row.get(k, '')))}</td>"
-            for k in ("name", "status", "job_id", "ee_provenance", "hosts", "summary")
-        )
-        + "</tr>"
-        for row in rows
-    )
-    coverage = report.get("coverage", {})
-    coverage_rows = "".join(
-        f"<tr><td>{escape(name)}</td><td>{escape(status)}</td></tr>"
-        for name, status in sorted(coverage.items())
-    )
-    runtime = escape(json.dumps(report.get("runtime", {}), indent=2))
-    build = (
-        "<h2>EE build provenance</h2><pre>"
-        + escape(json.dumps(report["ee_build"], indent=2))
-        + "</pre>"
-        if report.get("ee_build")
-        else ""
-    )
-    diagnostics = report.get("runtime", {})
-    failed_checks = [
-        (
-            row.get("name"),
-            row.get("version"),
-            row.get("source_constraint"),
-            row.get("requires_ansible"),
-            row.get("status"),
-        )
-        for row in diagnostics.get("collections", [])
-        if row.get("status") != "compatible"
-    ]
-    failed_checks += [
-        (name, value, "installed", "", "missing Python package")
-        for name, value in diagnostics.get("packages", {}).items()
-        if value == "unavailable"
-    ]
-    failed_checks += [
-        (name, "failed", "executable succeeds", "", "tool check failed")
-        for name, value in diagnostics.get("tools", {}).items()
-        if not value
-    ]
-    failures = "".join(
-        "<tr>"
-        + "".join(f"<td>{escape(str(value or ''))}</td>" for value in row)
-        + "</tr>"
-        for row in failed_checks
-    )
-    runtime_failures = (
-        "<h2>EE validation failures</h2><table><thead><tr><th>Check</th><th>Observed</th><th>Source requirement</th><th>Required core</th><th>Result</th></tr></thead><tbody>"
-        + failures
-        + "</tbody></table>"
-        if failed_checks
-        else ""
-    )
-    html = f"""<!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
-<title>{title}</title><style>
-body{{font:16px system-ui,sans-serif;max-width:1100px;margin:40px auto;padding:0 20px;color:#18222d;background:#f7f9fb}}
-h1{{font-size:28px}}h2{{margin-top:32px}}table{{border-collapse:collapse;width:100%;background:white}}
-td,th{{padding:12px;text-align:left;border-bottom:1px solid #dce3e9;overflow-wrap:anywhere}}
-dl{{display:grid;grid-template-columns:180px 1fr;gap:8px}}dd{{margin:0;overflow-wrap:anywhere}}
-pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#eaf0f5;padding:16px}}
-.note{{padding:16px;border-left:4px solid #597288;background:#edf2f7}}
-@media(max-width:650px){{dl{{display:block}}dt{{font-weight:bold}}table{{font-size:13px}}td,th{{padding:7px}}}}
-</style><main><h1>{title}</h1><p>{escape(summary)}</p>
-<p class="note">{escape(report.get('scope', ''))}</p><dl>{items}</dl>
-<h2>Executions and assertions</h2><table><thead><tr><th>Case</th><th>Status</th><th>Job ID</th><th>EE evidence</th><th>Hosts</th><th>Result</th></tr></thead><tbody>{body}</tbody></table>
-{build}{runtime_failures}<h2>Candidate runtime</h2><pre>{runtime}</pre>
-<h2>Full catalog coverage</h2><p>Only reached APD template executions count. Diagnostic jobs are listed separately above.</p>
-<table><thead><tr><th>Template</th><th>Coverage</th></tr></thead><tbody>{coverage_rows}</tbody></table>
-<h2>Cleanup</h2><pre>{escape(json.dumps(report.get('cleanup', []), indent=2))}</pre>
-<p>Raw output and input variables are omitted. Inspect failed job IDs in your Controller for detailed diagnostics.</p></main></html>"""
+    html = dashboard(report)
     (directory / "report.html").write_text(html)
     markdown = [
         f"# {title}",
@@ -138,9 +73,26 @@ pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#eaf0f5;padding:16px
         "",
         summary,
         "",
-        "| Case | Status | Job | Result |",
-        "| --- | --- | --- | --- |",
     ]
+    failed = [
+        row for row in rows if row["status"] in ("failed", "timed_out", "canceled")
+    ]
+    if failed:
+        markdown += ["## ❌ Failures", ""]
+        for row in failed:
+            text = (
+                str(row.get("summary", "Execution failed"))
+                .replace("<", "&lt;")
+                .replace("\n", " ")
+            )
+            url = job_url(report, row)
+            suffix = f" [Controller logs]({url})" if url else ""
+            markdown.append(f"- **{row['name']}** — {text}{suffix}")
+        markdown.append("")
+    image = report.get("metadata", {}).get("candidate_image")
+    if image:
+        markdown += ["**Image under test:** `" + str(image) + "`", ""]
+    markdown += ["| Case | Status | Job | Result |", "| --- | --- | --- | --- |"]
     for row in rows:
         values = [
             str(row.get(k, ""))
@@ -149,11 +101,43 @@ pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#eaf0f5;padding:16px
             .replace("<", "&lt;")
             for k in ("name", "status", "job_id", "summary")
         ]
+        values[1] = {
+            "passed": "✅ Passed",
+            "failed": "❌ Failed",
+            "blocked": "⏸ Blocked",
+            "timed_out": "⏱ Timed out",
+            "canceled": "⏹ Canceled",
+        }.get(row["status"], values[1])
+        url = job_url(report, row)
+        if url:
+            values[2] = f"[{row['job_id']}]({url})"
         markdown.append("| " + " | ".join(values) + " |")
     markdown += [
         "",
-        "Download the report artifact and open report.html for runtime, full coverage and cleanup details.",
+        "Download **report.html** for the phase timeline, highlighted failures, EE versions and authenticated Controller log links.",
+        "",
     ]
+    log = [title, summary, ""]
+    for row in rows:
+        at = row.get("timestamp", "")
+        log.append(
+            f"{at} [{row['status'].upper()}] [{row.get('phase', 'execution')}] {row['name']}: {row.get('summary', '')}"
+        )
+        url = job_url(report, row)
+        if url:
+            log.append("  Controller logs: " + url)
+        for event in row.get("events", []):
+            log.append(
+                f"  {event.get('status', 'failed')}: {event.get('task', 'task')} / {event.get('action', '')} / {event.get('host', 'target host')}"
+            )
+            if event.get("unsupported_parameters"):
+                log.append(
+                    "  Unsupported module parameters: "
+                    + ", ".join(event["unsupported_parameters"])
+                )
+            if event.get("redacted"):
+                log.append("  Task output protected by no_log; raw result omitted.")
+    (directory / "run.log").write_text("\n".join(log) + "\n")
     (directory / "summary.md").write_text("\n".join(markdown) + "\n")
 
 
@@ -163,9 +147,14 @@ def sample(graph, output):
         "sample": True,
         "scope": "Illustrative report only. No APD connection, EE validation or infrastructure changes occurred.",
         "metadata": {
-            "profile": "ee-smoke",
-            "candidate_commit": "sample-commit",
-            "candidate_image": "quay.io/example/apd-ee@sha256:" + "a" * 64,
+            "profile": "baseline-smoke",
+            "candidate_commit": "a" * 40,
+            "candidate_image": "ghcr.io/example/product-demos/apd-ee-27@sha256:"
+            + "a" * 64,
+            "repository": "https://github.com/example/product-demos",
+            "controller_url": "https://controller.example.test",
+            "started": "2026-10-29T12:00:00+00:00",
+            "finished": "2026-10-29T12:06:30+00:00",
             "runtime_digest": "unobservable; configured digest verified only",
         },
         "cases": [
@@ -173,34 +162,69 @@ def sample(graph, output):
                 "name": "Candidate runtime workflow",
                 "status": "passed",
                 "kind": "diagnostic",
-                "job_id": "sample-101",
+                "job_id": 101,
+                "phase": "runtime",
+                "elapsed": 32,
                 "ee_provenance": "configured digest verified",
                 "hosts": 1,
                 "summary": "Runtime and collection constraints satisfied (sample).",
             },
             {
-                "name": "LINUX | Fact Scan",
+                "name": "APD | Multi-demo setup",
                 "status": "passed",
                 "kind": "job_template",
-                "job_id": "sample-102",
+                "job_id": 102,
+                "phase": "setup",
+                "elapsed": 240,
                 "ee_provenance": "configured digest verified",
                 "hosts": 2,
-                "summary": "Expected Linux hosts and package/service fact tasks completed (sample).",
+                "summary": "Cloud, Infrastructure, Linux, Network and Windows templates installed (sample).",
             },
             {
-                "name": "WINDOWS | Test Connectivity",
-                "status": "blocked",
-                "kind": "job_template",
-                "summary": "No eligible Windows hosts in the selected inventory (sample).",
+                "name": "Fixture baseline",
+                "status": "failed",
+                "kind": "diagnostic",
+                "phase": "baseline",
+                "job_id": 103,
+                "elapsed": 7,
+                "ee_provenance": "configured digest verified",
+                "summary": "AWS inspection failed: the credential cannot describe reserved VPCs. No infrastructure was provisioned (sample).",
+                "failure_categories": ["aws_permissions"],
+                "events": [
+                    {
+                        "task": "Inspect reserved VPCs",
+                        "action": "amazon.aws.ec2_vpc_net_info",
+                        "host": "localhost",
+                        "status": "failed",
+                        "redacted": True,
+                        "source": "tests/integration/fixture_guard.yml",
+                        "line": 9,
+                    }
+                ],
             },
         ],
         "runtime": {
             "core": "2.16.19",
+            "compatible": True,
             "architecture": "x86_64",
             "collections": [
-                {"name": "amazon.aws", "version": "9.5.2", "status": "compatible"}
+                {
+                    "name": "amazon.aws",
+                    "version": "9.5.2",
+                    "source_constraint": ">=7.5.0,<10.0.0",
+                    "status": "compatible",
+                },
+                {
+                    "name": "community.aws",
+                    "version": "9.3.0",
+                    "source_constraint": ">=7.0.0,<10.0.0",
+                    "status": "compatible",
+                },
             ],
+            "packages": {"passlib": "1.7.4", "ncclient": "0.7.0", "pywinrm": "0.5.0"},
+            "tools": {"helm": True, "terraform": True, "oc": True},
         },
+        "ee_build": {"mode": "built", "platform": "linux/amd64"},
         "coverage": {entry["name"]: "not_selected" for entry in graph["templates"]},
         "cleanup": [
             {
@@ -209,8 +233,10 @@ def sample(graph, output):
             }
         ],
     }
-    report["coverage"]["LINUX | Fact Scan"] = "passed (sample)"
-    report["coverage"]["WINDOWS | Test Connectivity"] = "blocked (sample)"
+    report["build_runtime"] = report["runtime"]
+    for row in report["cases"]:
+        if row["name"] in report["coverage"]:
+            report["coverage"][row["name"]] = row["status"]
     render(report, output)
 
 

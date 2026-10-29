@@ -315,7 +315,8 @@
           ansible-role: direct_peered_networks
           managed-by: "{{ apd_managed_by }}"
           apd_id: "{{ apd_id }}"
-        tenancy: "{{ tenancy }}"  # noqa args[module]
+        placement:
+          tenancy: "{{ tenancy }}"
         vpc_subnet_id: "{{ dmz_subnet.subnet.id }}"
         wait: true
       register: dmz_ec2
@@ -413,7 +414,8 @@
           ansible-role: direct_peered_networks
           managed-by: "{{ apd_managed_by }}"
           apd_id: "{{ apd_id }}"
-        tenancy: "{{ tenancy }}"  # noqa args[module]
+        placement:
+          tenancy: "{{ tenancy }}"
         vpc_subnet_id: "{{ priv_network_priv_subnet.subnet.id }}"
         wait: true
       register: priv_network_ec2

@@ -47,6 +47,7 @@ after environment approval. The preparation and EE build jobs never access APD.
 5. After completion, download **apd-live-report-<run>-<attempt>** and open
    `report.html`. JSON, JUnit, a Markdown summary and a resource ledger accompany it.
    A failed test still produces a report when the runner can finalize normally.
+   The dashboard highlights the failing phase and links directly to Controller logs.
 
 GitHub requires a `workflow_dispatch` workflow to exist on the default branch.
 This preview deliberately uses a branch-push trigger so it can run without merging
@@ -103,11 +104,20 @@ requirements/config/Containerfile checksums, builder version, RPM URL and platfo
 The live runner validates that this evidence matches its selected commit and image,
 includes it in the final report, and repeats runtime validation inside APD.
 
-To reproduce a previously published public EE instead, set the repository variable
-`APD_EE_IMAGE` (or the `ee_image` dispatch input). This explicitly skips building,
-resolves the image to a digest and labels the evidence as externally built. Remove
-the variable to return to source builds. External-image overrides do not claim
-source build provenance or automatically configure private registry credentials.
+The integration workflow reads the immutable image directly from the matching
+metadata artifact produced by its preceding build job. Image names do not pass
+through job outputs, so registry usernames masked as GitHub secrets cannot erase
+the selected image. Public image overrides and the
+`APD_EE_IMAGE` workflow variable are removed. A required provenance check rejects
+external/Quay images before Controller changes. The Controller runtime probe must
+match the build probe's exact collection, core and Python package versions, and
+runs again after category setup before AWS checks.
+
+Setup templates retain the pinned `apd_ee_image`, project remote and revision in
+their defaults, including Single demo setup jobs launched by Multi-demo setup.
+Bindings and project/organization defaults are reapplied before test launches.
+Local diagnostic commands can still inspect an external image explicitly; the
+approved CI path always tests the image from its preceding GHCR build.
 
 ### Initial image finding
 
@@ -125,9 +135,8 @@ of the same pinned digest reproduced these findings on October 29, 2026:
 | juniper.device | Absent | Source requires 2.0.1 |
 | passlib | Absent | EE definition requires >=1.7.4 |
 
-This finding motivated the default source build stage. An explicit override of
-that old digest still fails compatibility validation; the runner does not bypass
-the check or silently substitute another image.
+This finding motivated the default source build stage. That old digest still fails compatibility validation; CI now builds and tests
+the GHCR candidate without a Quay fallback.
 
 Repository variables `APD_TEST_PROFILE` (`baseline-smoke`, `cloud-smoke`, or
 `network-smoke`), `APD_TEST_REGION` (`us-east-2` or `us-west-2`), and `APD_ACCESS_CIDR`
@@ -242,3 +251,65 @@ python tests/integration/report.py --sample --output integration-results/sample
 The tests use an in-memory Controller and simulated build commands. No credentials
 or live infrastructure are used. A local live run uses the same `run.py` CLI as Actions and requires APD
 credentials in environment variables plus an immutable image digest and commit SHA.
+
+## Read the dashboard and diagnostics
+
+The HTML report starts with the overall result, check counts and a highlighted
+failure panel. A phase timeline separates APD configuration, EE validation, category
+setup, AWS baseline, cloud tests, network tests and cleanup. Failed checks open by
+default. The image card shows the exact GHCR digest and AWS collection versions;
+the collection inventory compares the CI build with Controller observations.
+
+Job links open authenticated Controller output. `run.log` contains a sanitized
+execution trace and canonical task/module/source locations. Raw stdout, invocation
+arguments and exception bodies are never copied. Rendered task names are replaced
+by names read from the candidate source, and unknown hosts are omitted. The
+Controller origin appears in log links; login credentials do not.
+
+AWS fixture queries keep `no_log` protection. Their rescue path publishes only a
+known module name and an allowlisted failure category. A failed query is reported
+as an inspection failure, rather than incorrectly claiming existing resources.
+An actual non-empty baseline remains a refusal to provision. Cleanup failures are
+highlighted even when all test jobs passed.
+
+## Publish the tested image to Quay
+
+A second workflow, **Approve tested EE publication to Quay**, is called after the
+APD test completes. It works from this preview branch as a reusable workflow,
+before any merge or PR. Its standalone manual form becomes available when the
+workflow is on the default branch, as required by GitHub.
+
+The unprivileged planning job downloads the completed integration attempt's report,
+validates the workflow/commit/image provenance and successful EE runtime checks,
+and records the exact source digest, destination tag, test outcome and cleanup
+status in **apd-quay-plan-<run>-<attempt>**. It refuses samples, external images,
+incomplete tests and failed runtime validation. Cloud/network smoke failures may
+still be explicitly accepted by the reviewer; the summary displays those failures
+before approval. This is publication of a tested candidate, not full-catalog certification.
+
+The publishing job requires a separate **quay-publish** environment approval. The
+fork environment is configured with `l3acon` as required reviewer, administrator
+bypass disabled and this branch allowed. Configure **QUAY_USERNAME** and
+**QUAY_PASSWORD** in that environment (a Quay robot account with write access is
+suitable). The caller also supports the two named repository secrets when already
+configured there; only the protected publish job maps them into its process.
+Environment secrets take precedence. APD approval does not approve registry publication.
+
+The default destination is
+`quay.io/ansible-product-demos/apd-ee-27:tested-<commit>-<source-run>-<attempt>`.
+Repository variables **APD_QUAY_REPOSITORY** and **APD_QUAY_TAG** can choose another
+destination or an explicit tag before a run. `latest` is never changed implicitly;
+selecting it explicitly makes it visible in the approval plan. The standalone form
+also accepts repository/tag inputs when available.
+
+After approval, `skopeo copy --all --preserve-digests` copies the immutable GHCR
+source without rebuilding. The job verifies the returned digest and the final
+Quay tag independently, then saves **apd-quay-published-<run>-<attempt>** with the
+source, destination, digest and original test outcome. No Quay write occurs while
+the approval is pending.
+
+The AWS instance tasks use `placement.tenancy`, as supported by amazon.aws 9.5.2,
+rather than the deprecated top-level `tenancy` argument, which is removed in
+newer AWS collection releases. Unsupported-argument diagnostics
+retain only module/parameter names present in the candidate source; invocation
+values and AWS credential fields are never copied to the report.

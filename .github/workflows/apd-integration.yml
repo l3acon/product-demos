@@ -6,10 +6,6 @@ on:
     branches: [codex/apd-integration-ci]
   workflow_dispatch:
     inputs:
-      ee_image:
-        description: Optional public image override; leave empty to build the source EE
-        type: string
-        required: false
       profile:
         description: Fresh fixtures to provision and test
         type: choice
@@ -59,8 +55,6 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image: ${{ steps.image.outputs.image }}
-      built: ${{ steps.image.outputs.built }}
       evidence: ${{ steps.image.outputs.evidence }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -74,7 +68,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y podman skopeo
           python -m pip install -r tests/integration/requirements.txt -r tests/integration/build-requirements.txt
-      - name: Build, check and publish the source EE or resolve an explicit override
+      - name: Build, check and publish the source EE
         id: image
         env:
           GH_TOKEN: ${{ github.token }}
@@ -82,13 +76,11 @@ jobs:
           REDHAT_REGISTRY_PASSWORD: ${{ secrets.REDHAT_REGISTRY_PASSWORD }}
           ANSIBLE_GALAXY_SERVER_CERTIFIED_TOKEN: ${{ secrets.ANSIBLE_GALAXY_SERVER_CERTIFIED_TOKEN }}
           ANSIBLE_GALAXY_SERVER_VALIDATED_TOKEN: ${{ secrets.ANSIBLE_GALAXY_SERVER_VALIDATED_TOKEN }}
-          EXTERNAL_IMAGE: ${{ inputs.ee_image || vars.APD_EE_IMAGE }}
         run: |
           python tests/integration/build_ee.py \
             --repository "$GITHUB_REPOSITORY" \
             --revision "$GITHUB_SHA" \
-            --run-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            --external-image "$EXTERNAL_IMAGE"
+            --run-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
       - name: Add EE build results to the Actions summary
         if: always()
         run: |
@@ -170,10 +162,9 @@ jobs:
           APD_PASSWORD: ${{ secrets.APD_PASSWORD }}
           APD_TOKEN: ${{ secrets.APD_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-          APD_REGISTRY_HOST: ${{ needs.candidate.outputs.built == 'true' && 'ghcr.io' || '' }}
-          APD_REGISTRY_USERNAME: ${{ needs.candidate.outputs.built == 'true' && github.actor || '' }}
-          APD_REGISTRY_PASSWORD: ${{ needs.candidate.outputs.built == 'true' && github.token || '' }}
-          CANDIDATE_IMAGE: ${{ needs.candidate.outputs.image }}
+          APD_REGISTRY_HOST: ghcr.io
+          APD_REGISTRY_USERNAME: ${{ github.actor }}
+          APD_REGISTRY_PASSWORD: ${{ github.token }}
           TEST_PROFILE: ${{ inputs.profile || vars.APD_TEST_PROFILE || 'baseline-smoke' }}
           TEST_REGION: ${{ inputs.region || vars.APD_TEST_REGION || 'us-east-2' }}
           TEST_ACCESS_CIDR: ${{ vars.APD_ACCESS_CIDR || '0.0.0.0/0' }}
@@ -181,8 +172,9 @@ jobs:
           python tests/integration/run.py \
             --repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --revision "$GITHUB_SHA" \
-            --image "$CANDIDATE_IMAGE" \
             --build-metadata integration-results/ee-build/build-metadata.json \
+            --build-report integration-results/ee-build/report.json \
+            --require-built-image \
             --profile "$TEST_PROFILE" \
             --region "$TEST_REGION" \
             --access-cidr "$TEST_ACCESS_CIDR" \
@@ -207,6 +199,25 @@ jobs:
             integration-results/live/junit.xml
             integration-results/live/summary.md
             integration-results/live/ledger.json
+            integration-results/live/run.log
           retention-days: 14
           if-no-files-found: warn
+
+  publish-to-quay:
+    name: Review publication of the tested EE
+    needs: [candidate, integration]
+    if: always() && needs.candidate.result == 'success' && (needs.integration.result == 'success' || needs.integration.result == 'failure')
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    uses: ./.github/workflows/apd-promote-ee.yml
+    secrets:
+      QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+      QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+    with:
+      run_id: ${{ github.run_id }}
+      run_attempt: ${{ github.run_attempt }}
+      quay_repository: ${{ vars.APD_QUAY_REPOSITORY || 'quay.io/ansible-product-demos/apd-ee-27' }}
+      quay_tag: ${{ vars.APD_QUAY_TAG || '' }}
 ...

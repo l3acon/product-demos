@@ -1,0 +1,127 @@
+---
+name: Approve tested EE publication to Quay
+
+on:
+  workflow_call:
+    secrets:
+      QUAY_USERNAME:
+        required: false
+      QUAY_PASSWORD:
+        required: false
+    inputs:
+      run_id:
+        type: string
+        required: true
+      run_attempt:
+        type: string
+        required: true
+      quay_repository:
+        type: string
+        default: quay.io/ansible-product-demos/apd-ee-27
+      quay_tag:
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Integration run ID containing the tested GHCR image
+        type: string
+        required: true
+      run_attempt:
+        description: Completed integration test attempt
+        type: string
+        default: '1'
+        required: true
+      quay_repository:
+        description: Quay destination repository
+        type: string
+        default: quay.io/ansible-product-demos/apd-ee-27
+      quay_tag:
+        description: Destination tag; empty creates a unique tested-commit-run-attempt tag
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  plan:
+    name: Review tested digest and test outcome
+    if: github.repository == 'l3acon/product-demos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      evidence: ${{ steps.evidence.outputs.name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/integration/requirements.txt
+      - name: Lock the tested image and destination before approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.run_id }}
+          SOURCE_ATTEMPT: ${{ inputs.run_attempt }}
+          QUAY_REPOSITORY: ${{ inputs.quay_repository }}
+          QUAY_TAG: ${{ inputs.quay_tag }}
+        run: |
+          python tests/integration/promote_ee.py plan \
+            --repository "$GITHUB_REPOSITORY" --run-id "$SOURCE_RUN" \
+            --attempt "$SOURCE_ATTEMPT" --quay-repository "$QUAY_REPOSITORY" \
+            --tag "$QUAY_TAG"
+      - name: Name the approval evidence
+        id: evidence
+        run: echo "name=apd-quay-plan-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: ${{ steps.evidence.outputs.name }}
+          path: integration-results/quay/
+          retention-days: 14
+
+  publish:
+    name: Approve copying the tested GHCR digest to Quay
+    needs: plan
+    environment: quay-publish
+    concurrency:
+      group: apd-quay-publication
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+      - name: Install the registry copy tool
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y skopeo
+          python -m pip install -r tests/integration/requirements.txt
+      - name: Read the approved promotion plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN_ARTIFACT: ${{ needs.plan.outputs.evidence }}
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$PLAN_ARTIFACT" --dir integration-results/approved-plan
+      - name: Copy without rebuilding and verify the Quay digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+        run: python tests/integration/promote_ee.py publish --plan integration-results/approved-plan/promotion.json --output integration-results/quay-published
+      - name: Upload publication evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: apd-quay-published-${{ github.run_id }}-${{ github.run_attempt }}
+          path: integration-results/quay-published/
+          retention-days: 30
+...

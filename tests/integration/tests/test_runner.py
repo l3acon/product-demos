@@ -14,7 +14,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from controller import Controller, ControllerError
 from report import render
-from run import Runner, callback_inputs, fresh_machine_inputs, public_runtime, variables
+from run import (
+    Runner,
+    callback_inputs,
+    fresh_machine_inputs,
+    main,
+    public_runtime,
+    variables,
+)
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -297,8 +304,15 @@ class FakeController:
                         "architecture": "x86_64",
                         "compatible": self.runtime_ok,
                         "collections": [],
+                        "tools": {"helm": True, "terraform": True, "oc": True},
+                        "packages": {
+                            "passlib": "1.7.4",
+                            "ncclient": "0.7.0",
+                            "pywinrm": "0.5.0",
+                        },
                     }
                 }
+                artifacts["ci_runtime"].update(getattr(self, "runtime_overrides", {}))
             if "fixture_guard.yml" in template.get("playbook", ""):
                 mode = data["extra_vars"]["ci_guard_mode"]
                 if mode == "baseline" and not self.baseline_ok:
@@ -306,6 +320,9 @@ class FakeController:
                 artifacts = {
                     "ci_guard_passed": status == "successful",
                     "ci_key_ids": ["key-ci"],
+                    "ci_guard_reason": "resources_present"
+                    if status == "failed"
+                    else "empty",
                 }
             if template["name"] == "Deploy Cloud Stack in AWS" and not self.cloud_ok:
                 status = "failed"
@@ -440,6 +457,158 @@ class RunnerTests(unittest.TestCase):
 
     def runner(self):
         return Runner(self.api, self.args, sleep=lambda _: None)
+
+    def built_evidence(self):
+        self.args.image = "ghcr.io/l3acon/product-demos/apd-ee-27@sha256:" + "c" * 64
+        self.args.require_built_image = True
+        self.args.build_metadata = self.args.output / "build-metadata.json"
+        self.args.build_report = self.args.output / "build-report.json"
+        metadata = {
+            "mode": "built",
+            "image": self.args.image,
+            "candidate_commit": self.args.revision,
+            "aap_series": "27",
+            "platform": "linux/amd64",
+            "base_image": "registry.redhat.io/ee@sha256:" + "b" * 64,
+            **{
+                key: "a" * 64
+                for key in (
+                    "definition_sha256",
+                    "requirements_sha256",
+                    "ansible_cfg_sha256",
+                    "containerfile_sha256",
+                )
+            },
+        }
+        runtime = {
+            "core": "2.16.19",
+            "python": "3.12.1",
+            "architecture": "x86_64",
+            "compatible": True,
+            "collections": [],
+            "tools": {key: True for key in ("helm", "terraform", "oc")},
+            "packages": {"passlib": "1.7.4", "ncclient": "0.7.0", "pywinrm": "0.5.0"},
+        }
+        self.args.build_metadata.write_text(json.dumps(metadata))
+        self.args.build_report.write_text(
+            json.dumps(
+                {
+                    "sample": False,
+                    "metadata": {
+                        "candidate_commit": self.args.revision,
+                        "candidate_image": self.args.image,
+                    },
+                    "runtime": runtime,
+                }
+            )
+        )
+        return runtime
+
+    def test_ci_requires_preceding_build_and_rechecks_runtime_after_setup(self):
+        self.built_evidence()
+        runner = self.runner()
+        self.assertEqual(runner.run(), 0)
+        probes = [
+            case
+            for case in runner.report["cases"]
+            if case["name"].startswith("Candidate runtime validation")
+        ]
+        self.assertEqual(len(probes), 2)
+        self.assertTrue(all(case["status"] == "passed" for case in probes))
+
+    def test_ci_cli_reads_the_image_from_build_artifact_without_job_output(self):
+        self.built_evidence()
+        command = [
+            "run.py",
+            "--repository",
+            self.args.repository,
+            "--revision",
+            self.args.revision,
+            "--build-metadata",
+            str(self.args.build_metadata),
+            "--build-report",
+            str(self.args.build_report),
+            "--require-built-image",
+        ]
+        with patch("sys.argv", command), patch.dict(
+            "os.environ",
+            {
+                "APD_URL": "https://aap.example.test",
+                "APD_USERNAME": "user",
+                "APD_PASSWORD": "DO-NOT-REPORT",
+            },
+            clear=True,
+        ), patch("run.Runner") as runner:
+            runner.return_value.run.return_value = 0
+            self.assertEqual(main(), 0)
+            self.assertEqual(runner.call_args.args[1].image, self.args.image)
+
+    def test_ci_rejects_a_quay_override_before_controller_mutation(self):
+        self.args.require_built_image = True
+        with self.assertRaisesRegex(ControllerError, "preceding build"):
+            self.runner()
+        self.assertFalse(self.api.calls)
+
+    def test_changed_collection_version_is_not_counted_as_built_image_even_if_compatible(
+        self,
+    ):
+        runtime = self.built_evidence()
+        collection = {
+            "name": "amazon.aws",
+            "version": "9.5.2",
+            "source_constraint": ">=7.5.0,<10.0.0",
+            "requires_ansible": ">=2.15.0",
+            "status": "compatible",
+        }
+        build = json.loads(self.args.build_report.read_text())
+        build["runtime"]["collections"] = [collection]
+        self.args.build_report.write_text(json.dumps(build))
+        self.api.runtime_overrides = {
+            "collections": [{**collection, "version": "9.4.0"}]
+        }
+        runner = self.runner()
+        self.assertEqual(runner.run(), 1)
+        self.assertFalse(runner.cloud_started or runner.network_started)
+        check = next(
+            case
+            for case in runner.report["cases"]
+            if case["name"] == "Candidate runtime validation"
+        )
+        self.assertIn("build_runtime_mismatch", check["failure_categories"])
+
+    def test_nested_setup_templates_keep_image_and_project_revision_pinned(self):
+        runner = self.runner()
+        runner.configure()
+        runner.bind()
+        for name in ("APD | Single demo setup", "APD | Multi-demo setup"):
+            row = self.api.unique("job_templates", name)
+            inputs = variables(row["extra_vars"])
+            self.assertEqual(inputs["apd_ee_image"], self.args.image)
+            self.assertEqual(inputs["apd_git_repo_branch"], self.args.revision)
+            self.assertTrue(row["ask_variables_on_launch"])
+
+    def test_aws_query_failure_is_not_reported_as_existing_resources(self):
+        runner = self.runner()
+        runner.configure()
+        runner.guard_template = runner.probe_template
+        runner.launch = lambda *args, **kwargs: (
+            False,
+            {
+                "id": 999,
+                "url": "/api/controller/v2/jobs/999/",
+                "artifacts": {
+                    "ci_guard_reason": "aws_inspection_failed",
+                    "ci_guard_module": "amazon.aws.ec2_key_info",
+                    "ci_guard_error": "unsupported_module_arguments",
+                },
+            },
+        )
+        runner.case("Fixture baseline", "failed", job_id=999)
+        self.assertFalse(runner.guard("baseline"))
+        result = runner.report["cases"][-1]
+        self.assertIn("amazon.aws.ec2_key_info", result["summary"])
+        self.assertNotIn("already exist", result["summary"])
+        self.assertEqual(result["failure_categories"], ["unsupported_module_arguments"])
 
     def test_fresh_setup_provision_smoke_and_cleanup(self):
         runner = self.runner()
@@ -931,7 +1100,11 @@ class ClientAndReportTests(unittest.TestCase):
         teardown = load(ROOT / "network/teardown_hypervisor.yml")
         selections = [
             task["amazon.aws.ec2_instance_info"]["filters"]
-            for task in guard[0]["tasks"]
+            for task in [
+                nested
+                for top in guard[0]["tasks"]
+                for nested in (top.get("block", []) + [top])
+            ]
             if "amazon.aws.ec2_instance_info" in task
         ]
         for task in teardown[0]["tasks"]:

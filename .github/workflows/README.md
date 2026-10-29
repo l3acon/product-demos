@@ -62,3 +62,16 @@ It is not exact because GitHub seems to run closer to a sidecar container paradi
 
 For the 24 EE, the python interpreter version is set for our pre-commit script like so: `USE_PYTHON=python3.9 ./.github/workflows/run-pc.sh`
 The 25 EE is similarly run but without the need for this variable: `./.github/workflows/run-pc.sh`
+
+
+## APD integration and tested EE publication
+
+The fork preview builds an AAP 2.7 amd64 EE, tests that exact GHCR digest after
+**apd-integration** approval, and produces a phase dashboard with sanitized
+diagnostics and authenticated Controller log links. It has no Quay image fallback.
+
+The separate reusable `apd-promote-ee.yml` workflow creates a publication plan from
+the completed test report, then requires **quay-publish** approval before copying
+the tested digest to Quay. Configure Quay credentials in that protected environment.
+See [first-run setup and publication](../../tests/integration/FIRST-RUN.md) for the
+source/destination checks, test-result review and tag policy.

@@ -18,6 +18,7 @@ import uuid
 from build_graph import build, load
 from build_ee import BuildError, validate_metadata
 from controller import Controller, ControllerError
+from diagnostics import public_events
 from report import render
 from recovery import previous_evidence, reconcile_preprovisioning
 import yaml
@@ -194,6 +195,8 @@ def public_runtime(value):
 class Runner:
     def __init__(self, client, args, clock=time.monotonic, sleep=time.sleep):
         self.api, self.args, self.clock, self.sleep = client, args, clock, sleep
+        self.phase = "configure"
+        self.expected_runtime = None
         self.root = Path(__file__).resolve().parents[2]
         self.graph = build(self.root, load(Path(__file__).with_name("scenarios.yml")))
         self.uid = uuid.uuid4().hex[:24]
@@ -223,6 +226,7 @@ class Runner:
                 "profile": args.profile,
                 "candidate_commit": args.revision,
                 "candidate_image": args.image,
+                "repository": args.repository,
                 "started": now(),
                 "runtime_digest": "configured immutable digest checked; actual pod image evidence unavailable",
             },
@@ -237,6 +241,40 @@ class Runner:
             self.report["ee_build"] = validate_metadata(
                 args.build_metadata, args.revision, args.image
             )
+        if getattr(args, "require_built_image", False):
+            expected = (
+                args.repository.removeprefix("https://github.com/")
+                .removesuffix(".git")
+                .lower()
+            )
+            if self.report.get("ee_build", {}).get(
+                "mode"
+            ) != "built" or not args.image.startswith(
+                f"ghcr.io/{expected}/apd-ee-27@sha256:"
+            ):
+                raise ControllerError(
+                    "CI requires the immutable GHCR image from its preceding build job"
+                )
+            source = getattr(args, "build_report", None)
+            if not source or source.stat().st_size > 1024 * 1024:
+                raise ControllerError(
+                    "The CI build runtime report is missing or invalid"
+                )
+            evidence = json.loads(source.read_text())
+            if (
+                evidence.get("sample") is not False
+                or evidence.get("metadata", {}).get("candidate_commit") != args.revision
+                or evidence.get("metadata", {}).get("candidate_image") != args.image
+                or evidence.get("runtime", {}).get("compatible") is not True
+            ):
+                raise ControllerError(
+                    "CI build runtime evidence does not match the selected image and revision"
+                )
+            self.expected_runtime = public_runtime(evidence["runtime"])
+            self.report["build_runtime"] = self.expected_runtime
+        base = getattr(self.api, "base", None)
+        if base:
+            self.report["metadata"]["controller_url"] = base
         self.checkpoint()
 
     def checkpoint(self):
@@ -258,7 +296,14 @@ class Runner:
         )
 
     def case(self, name, status, kind="assertion", **values):
-        row = {"name": name, "status": status, "kind": kind, **values}
+        row = {
+            "name": name,
+            "status": status,
+            "kind": kind,
+            "phase": self.phase,
+            "timestamp": now(),
+            **values,
+        }
         self.report["cases"].append(row)
         print(f"{status}: {name}", flush=True)
         if status == "failed" and values.get("summary"):
@@ -478,6 +523,7 @@ class Runner:
         )
 
     def bind(self):
+        setup_names = {"APD | Single demo setup", "APD | Multi-demo setup"}
         for row in self.api.collection("job_templates"):
             if row.get("project") != self.project["id"] or row["name"].startswith(
                 "OpenShift |"
@@ -492,11 +538,25 @@ class Runner:
                 None,
             )
             if (
-                spec
+                row["name"] in setup_names
+                or spec
                 and spec.get("test_ee_binding") == "candidate"
-                and row.get("execution_environment") != self.ee["id"]
-            ):
+            ) and row.get("execution_environment") != self.ee["id"]:
                 self.patch(row["url"], {"execution_environment": self.ee["id"]})
+            if row["name"] in setup_names:
+                pinned = variables(row.get("extra_vars"))
+                pinned.update(
+                    apd_ee_image=self.args.image,
+                    apd_git_repo=self.args.repository,
+                    apd_git_repo_branch=self.args.revision,
+                )
+                changed = {}
+                if pinned != variables(row.get("extra_vars")):
+                    changed["extra_vars"] = json.dumps(pinned)
+                if not row.get("ask_variables_on_launch"):
+                    changed["ask_variables_on_launch"] = True
+                if changed:
+                    self.patch(row["url"], changed)
         for row in self.api.collection("inventory_sources"):
             if (
                 row["name"]
@@ -508,6 +568,12 @@ class Runner:
         if self.registry_credential:
             selected["credential"] = self.registry_credential["id"]
         self.api.patch(self.ee["url"], selected)
+        for path in (
+            self.project["url"],
+            f"/api/controller/v2/organizations/{self.org}/",
+        ):
+            if self.api.get(path).get("default_environment") != self.ee["id"]:
+                self.api.patch(path, {"default_environment": self.ee["id"]})
 
     def record_job(self, job, name=None, kind="job_template", require_hosts=False):
         if job["url"] in self.recorded_jobs:
@@ -538,7 +604,9 @@ class Runner:
                 "unverified",
             )
         runtime = job.get("artifacts", {}).get("ci_runtime")
-        if not isinstance(runtime, dict) and name == "Candidate runtime validation":
+        if not isinstance(runtime, dict) and name.startswith(
+            "Candidate runtime validation"
+        ):
             events = self.api.list(
                 job["url"] + "job_events/?event=runner_on_ok&page_size=200"
             )
@@ -630,6 +698,7 @@ class Runner:
                 "Job did not record the reviewed candidate project revision.",
             )
         categories = set()
+        diagnostics = []
         if job.get("type") == "job":
             events = self.api.list(
                 job["url"] + "job_events/?event=runner_on_failed&page_size=100"
@@ -640,13 +709,43 @@ class Runner:
                 )
                 for event in events
             }
+            if job["status"] != "successful":
+                events += self.api.list(
+                    job["url"] + "job_events/?event=runner_on_unreachable&page_size=40"
+                )
+                allowed_hosts = {
+                    "localhost",
+                    "aws-dc",
+                    "aws_win1",
+                    "aws-rhel9",
+                    "aws-rhel10",
+                    "reports",
+                    "clab-hypervisor",
+                }
+                allowed_hosts.update(
+                    load(
+                        self.root
+                        / "collections/ansible_collections/demo/network/roles/containerlab/defaults/main.yml"
+                    )["clab_device_catalog"]
+                )
+                diagnostics = public_events(events, self.root, allowed_hosts)
+                unsupported = next(
+                    (
+                        event
+                        for event in diagnostics
+                        if event.get("unsupported_parameters")
+                    ),
+                    None,
+                )
+                if unsupported:
+                    summary = f"{unsupported['unsupported_module']} rejected unsupported parameters: {', '.join(unsupported['unsupported_parameters'])}. Inspect the source task and tested collection versions."
             if categories and job["status"] != "successful":
                 summary = (
                     "Failure categories: "
                     + ", ".join(sorted(categories))
                     + ". Inspect the Controller job for full output."
                 )
-        if name == "Candidate runtime validation":
+        if name.startswith("Candidate runtime validation"):
             if self.report["runtime"]:
                 checked = self.report["runtime"]
                 bad = [
@@ -666,6 +765,10 @@ class Runner:
                     status = "failed"
                     categories = {"ee_compatibility"}
                     summary = f"EE validation failed: collections={', '.join(bad) or 'none'}; missing Python packages={', '.join(missing) or 'none'}; tool checks={', '.join(tools) or 'none'}."
+                elif self.expected_runtime and checked != self.expected_runtime:
+                    status = "failed"
+                    categories = {"build_runtime_mismatch"}
+                    summary = "Controller runtime versions differ from the upstream CI build probe; the run is not testing the built runtime."
             else:
                 status = "failed"
                 categories.add("runtime_metadata_unavailable")
@@ -680,6 +783,7 @@ class Runner:
             summary=summary,
             failure_categories=sorted(categories),
             elapsed=job.get("elapsed", 0),
+            events=diagnostics,
         )
         if name in self.report["coverage"]:
             prior = self.report["coverage"][name]
@@ -870,6 +974,58 @@ class Runner:
             template=self.guard_template,
         )
         artifacts = job.get("artifacts", {})
+        if not artifacts.get("ci_guard_reason") and not ok:
+            for event in self.api.list(
+                job["url"] + "job_events/?event=runner_on_ok&page_size=200"
+            ):
+                artifacts.update(
+                    event.get("event_data", {})
+                    .get("res", {})
+                    .get("ansible_stats", {})
+                    .get("data", {})
+                )
+        if not ok:
+            row = next(
+                case
+                for case in reversed(self.report["cases"])
+                if case.get("job_id") == job["id"]
+            )
+            reason = artifacts.get("ci_guard_reason")
+            if reason == "resources_present":
+                row[
+                    "summary"
+                ] = "Reserved AWS fixtures already exist; provisioning was refused."
+                row["failure_categories"] = ["baseline_not_empty"]
+            elif reason == "aws_inspection_failed":
+                module = artifacts.get("ci_guard_module")
+                module = (
+                    module
+                    if module
+                    in (
+                        "amazon.aws.ec2_vpc_net_info",
+                        "amazon.aws.ec2_key_info",
+                        "amazon.aws.ec2_instance_info",
+                    )
+                    else "AWS module"
+                )
+                error = artifacts.get("ci_guard_error")
+                error = (
+                    error
+                    if error
+                    in (
+                        "unsupported_module_arguments",
+                        "aws_authentication",
+                        "aws_permissions",
+                        "python_dependency",
+                    )
+                    else "aws_api_error"
+                )
+                row[
+                    "summary"
+                ] = f"AWS fixture inspection failed in {module}: {error}. This check did not create or delete resources."
+                row["failure_categories"] = [error]
+            print("Fixture diagnosis: " + row["summary"], flush=True)
+            self.checkpoint()
         if mode == "capture":
             self.key_ids = artifacts.get("ci_key_ids", [])
         return ok
@@ -955,6 +1111,7 @@ class Runner:
                 break
 
     def finalizers(self):
+        self.phase = "cleanup"
         # Cleanup has a separate time budget after the test budget expires.
         self.deadline = self.clock() + 3600
         quiescent = True
@@ -1106,6 +1263,7 @@ class Runner:
     def run(self):
         try:
             self.configure()
+            self.phase = "runtime"
             ok, _ = self.launch(
                 "Candidate runtime validation",
                 diagnostic=True,
@@ -1115,19 +1273,34 @@ class Runner:
                 raise ControllerError(
                     "Candidate runtime validation failed; infrastructure was not provisioned"
                 )
+            self.phase = "setup"
             self.setup()
+            self.phase = "runtime"
+            if self.expected_runtime:
+                ok, _ = self.launch(
+                    "Candidate runtime validation after setup",
+                    diagnostic=True,
+                    template=self.probe_template,
+                )
+                if not ok:
+                    raise ControllerError(
+                        "Category setup changed the candidate runtime; infrastructure was not provisioned"
+                    )
+            self.phase = "baseline"
             if not self.guard("baseline"):
                 raise ControllerError(
-                    "Existing reserved resources detected; provisioning refused"
+                    "AWS fixture baseline could not be validated; provisioning refused. Inspect the Fixture baseline case for the reason."
                 )
             self.baseline_passed = True
             self.checkpoint()
             if self.args.profile in ("baseline-smoke", "cloud-smoke"):
+                self.phase = "cloud"
                 try:
                     self.cloud()
                 except ControllerError as error:
                     self.case("Cloud smoke lane", "failed", summary=str(error))
             if self.args.profile in ("baseline-smoke", "network-smoke"):
+                self.phase = "network"
                 try:
                     self.network()
                 except ControllerError as error:
@@ -1173,7 +1346,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--revision", required=True)
-    parser.add_argument("--image", required=True)
+    parser.add_argument("--image")
     parser.add_argument(
         "--profile",
         choices=("baseline-smoke", "cloud-smoke", "network-smoke"),
@@ -1185,10 +1358,23 @@ def main():
     parser.add_argument("--access-cidr", default="0.0.0.0/0")
     parser.add_argument("--run-id", default="local")
     parser.add_argument("--build-metadata", type=Path)
+    parser.add_argument("--build-report", type=Path)
+    parser.add_argument("--require-built-image", action="store_true")
     parser.add_argument("--output", type=Path, default=Path("integration-results/live"))
     parser.add_argument("--timeout", type=int, default=14400)
     parser.add_argument("--poll-interval", type=float, default=10)
     args = parser.parse_args()
+    if args.require_built_image and not args.image:
+        try:
+            if not args.build_metadata or args.build_metadata.stat().st_size > 16384:
+                raise ValueError()
+            args.image = json.loads(args.build_metadata.read_text())["image"]
+        except (OSError, ValueError, KeyError, TypeError):
+            parser.error("The upstream build metadata must supply the CI image digest")
+    if not isinstance(args.image, str):
+        parser.error(
+            "Supply --image for a local run, or --require-built-image with CI build evidence"
+        )
     if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
         parser.error("revision must be an immutable 40-character commit SHA")
     if not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", args.image):
