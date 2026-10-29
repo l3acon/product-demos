@@ -1,6 +1,7 @@
 """Build the source EE, validate it locally, and publish a digest for the APD gate."""
 
 import argparse
+import configparser
 import hashlib
 from html.parser import HTMLParser
 import importlib.metadata
@@ -35,6 +36,10 @@ class BuildError(RuntimeError):
 
 
 def check_hub_tokens(tokens, report):
+    config = configparser.ConfigParser(interpolation=None)
+    config.read(
+        Path(__file__).resolve().parents[2] / "execution_environments/ansible.cfg"
+    )
     for name, token in tokens.items():
         if not re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", token):
             raise BuildError(
@@ -78,6 +83,25 @@ def check_hub_tokens(tokens, report):
                 "status": "passed",
             }
         )
+        server = "certified" if "CERTIFIED" in name else "validated"
+        url = config["galaxy_server." + server]["url"]
+        response = requests.get(
+            url,
+            headers={"Authorization": "Bearer " + result["access_token"]},
+            timeout=60,
+            allow_redirects=False,
+        )
+        report["cases"].append(
+            {
+                "name": "Automation Hub " + server + " content access",
+                "status": "passed" if response.status_code == 200 else "failed",
+                "summary": f"Content API returned HTTP {response.status_code}; no response body recorded.",
+            }
+        )
+        if response.status_code != 200:
+            raise BuildError(
+                f"Automation Hub {server} content access failed: HTTP {response.status_code}; SSO token refresh succeeded."
+            )
 
 
 def command(arguments, *, capture=False, stdin=None, cwd=None):
@@ -295,7 +319,14 @@ def build(args, report):
             cwd=source,
         )
         containerfile = context / "Containerfile"
-        containerfile.write_text(secure_galaxy_steps(containerfile.read_text()))
+        secured = secure_galaxy_steps(containerfile.read_text())
+        (context / "_build").mkdir(exist_ok=True)
+        shutil.copyfile(
+            root / "tests/integration/galaxy_cli.py", context / "_build/ci_galaxy.py"
+        )
+        containerfile.write_text(
+            secured.replace("ansible-galaxy ", "$PYCMD /build/ci_galaxy.py ")
+        )
         metadata["containerfile_sha256"] = hashlib.sha256(
             containerfile.read_bytes()
         ).hexdigest()

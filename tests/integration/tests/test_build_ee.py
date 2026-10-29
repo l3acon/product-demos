@@ -1,11 +1,14 @@
 """Test image provenance and the boundaries between build secrets and APD access."""
 
 import argparse
+from contextlib import redirect_stdout
+import io
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -18,6 +21,7 @@ from build_ee import (
     secure_galaxy_steps,
     validate_metadata,
 )
+from galaxy_cli import instrument
 
 
 CONTAINERFILE = "\n".join(
@@ -31,6 +35,21 @@ CONTAINERFILE = "\n".join(
 
 
 class BuildTests(unittest.TestCase):
+    def test_galaxy_error_trace_omits_query_and_body_but_preserves_client_error(self):
+        url = "https://sso.redhat.com/auth/token?secret=DO-NOT-PUBLISH"
+        body = json.dumps(
+            {"error": "invalid_grant", "error_description": "DO-NOT-PUBLISH"}
+        ).encode()
+        original = Mock(
+            side_effect=HTTPError(url, 400, "Bad Request", {}, io.BytesIO(body))
+        )
+        output = io.StringIO()
+        with redirect_stdout(output), self.assertRaises(HTTPError) as raised:
+            instrument(original)(url)
+        self.assertEqual(raised.exception.read(), body)
+        self.assertIn("invalid_grant", output.getvalue())
+        self.assertNotIn("DO-NOT-PUBLISH", output.getvalue())
+
     def test_hub_authentication_reports_only_allowlisted_error_codes(self):
         response = Mock(status_code=400)
         response.json.return_value = {
@@ -49,6 +68,20 @@ class BuildTests(unittest.TestCase):
             with self.assertRaisesRegex(BuildError, "without quotes"):
                 check_hub_tokens({TOKENS[0]: '"pasted.token.value"'}, {"cases": []})
             request.assert_not_called()
+
+    def test_hub_content_access_is_checked_after_successful_sso(self):
+        token = Mock(status_code=200)
+        token.json.return_value = {"access_token": "DO-NOT-PUBLISH"}
+        report = {"cases": []}
+        with patch("build_ee.requests.post", return_value=token), patch(
+            "build_ee.requests.get", return_value=Mock(status_code=403)
+        ):
+            with self.assertRaisesRegex(BuildError, "content access failed: HTTP 403"):
+                check_hub_tokens({TOKENS[0]: "offline.token.value"}, report)
+        self.assertEqual(
+            [case["status"] for case in report["cases"]], ["passed", "failed"]
+        )
+        self.assertNotIn("DO-NOT-PUBLISH", json.dumps(report))
 
     def test_every_galaxy_install_uses_required_secret_mounts(self):
         secured = secure_galaxy_steps(CONTAINERFILE)
