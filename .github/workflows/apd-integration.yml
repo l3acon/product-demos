@@ -1,0 +1,148 @@
+---
+name: APD integration preview
+
+on:
+  push:
+    branches: [codex/apd-integration-ci]
+  workflow_dispatch:
+    inputs:
+      ee_image:
+        description: Published candidate EE image tag or digest (resolved before approval)
+        type: string
+        required: false
+      profile:
+        description: Fresh fixtures to provision and test
+        type: choice
+        options: [baseline-smoke, cloud-smoke, network-smoke]
+        default: baseline-smoke
+      region:
+        description: AWS region for both fixtures
+        type: choice
+        options: [us-east-2, us-west-2]
+        default: us-east-2
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apd-integration-preview
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate runner and preview report
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+      - name: Install runner dependencies
+        run: python -m pip install -r tests/integration/requirements.txt
+      - name: Validate dependency graph
+        run: python tests/integration/build_graph.py
+      - name: Test Controller orchestration and reporting without live access
+        run: python -m unittest discover -s tests/integration/tests -v
+      - name: Generate an explicitly labeled sample report
+        run: python tests/integration/report.py --sample --output integration-results/sample
+      - name: Upload sample report for review before approval
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: apd-sample-report
+          path: integration-results/sample/
+          retention-days: 14
+      - name: Install registry inspection tool
+        run: sudo apt-get update -qq && sudo apt-get install -y skopeo
+      - name: Resolve the candidate image to an immutable digest
+        id: image
+        env:
+          CANDIDATE_IMAGE: ${{ inputs.ee_image || vars.APD_EE_IMAGE || 'quay.io/ansible-product-demos/apd-ee-27@sha256:68c102b10a7b277c9877bcc5d63d23011f676215a91eeed64cf9c793dbb226ee' }}
+        run: python tests/integration/resolve_image.py "$CANDIDATE_IMAGE"
+      - name: Show the exact run awaiting approval
+        env:
+          CANDIDATE_IMAGE: ${{ steps.image.outputs.image }}
+          TEST_PROFILE: ${{ inputs.profile || vars.APD_TEST_PROFILE || 'baseline-smoke' }}
+          TEST_REGION: ${{ inputs.region || vars.APD_TEST_REGION || 'us-east-2' }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          summary = f"""# APD integration run awaiting review
+
+          Candidate project: `{os.environ['GITHUB_REPOSITORY']}` at `{os.environ['GITHUB_SHA']}`
+
+          Candidate EE: `{os.environ['CANDIDATE_IMAGE']}`
+
+          Profile: `{os.environ['TEST_PROFILE']}`; AWS region: `{os.environ['TEST_REGION']}`
+
+          Download **apd-sample-report** to preview the report format. It contains sample data only.
+
+          Before approving **apd-integration**, configure APD_URL, APD_USERNAME and APD_PASSWORD as environment secrets for a fresh disposable APD instance.
+
+          The baseline profile configures the candidate project/EE, runs category setup except OpenShift and externally gated Satellite, then provisions five cloud VMs plus the Containerlab hypervisor, tests them and attempts cleanup. Existing reserved fixtures cause a refusal to provision.
+
+          This preview does not run the entire catalog. No PR or Pages deployment is created.
+          """
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as handle:
+              handle.write(summary)
+          PY
+
+  integration:
+    name: Approved fresh APD smoke test
+    if: github.repository == 'l3acon/product-demos'
+    needs: prepare
+    environment: apd-integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+      - name: Install runner dependencies
+        run: python -m pip install -r tests/integration/requirements.txt
+      - name: Configure baseline, provision fixtures, test and finalize
+        env:
+          APD_URL: ${{ secrets.APD_URL }}
+          APD_USERNAME: ${{ secrets.APD_USERNAME }}
+          APD_PASSWORD: ${{ secrets.APD_PASSWORD }}
+          APD_TOKEN: ${{ secrets.APD_TOKEN }}
+          CANDIDATE_IMAGE: ${{ needs.prepare.outputs.image }}
+          TEST_PROFILE: ${{ inputs.profile || vars.APD_TEST_PROFILE || 'baseline-smoke' }}
+          TEST_REGION: ${{ inputs.region || vars.APD_TEST_REGION || 'us-east-2' }}
+          TEST_ACCESS_CIDR: ${{ vars.APD_ACCESS_CIDR || '0.0.0.0/0' }}
+        run: |
+          python tests/integration/run.py \
+            --repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --revision "$GITHUB_SHA" \
+            --image "$CANDIDATE_IMAGE" \
+            --profile "$TEST_PROFILE" \
+            --region "$TEST_REGION" \
+            --access-cidr "$TEST_ACCESS_CIDR" \
+            --run-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --output integration-results/live
+      - name: Add the run report to the Actions summary
+        if: always()
+        run: |
+          if test -f integration-results/live/summary.md; then
+            cat integration-results/live/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'The runner stopped before producing a report; inspect the protected APD integration lease before retrying.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload sanitized live results even when a test fails
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: apd-live-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            integration-results/live/report.html
+            integration-results/live/report.json
+            integration-results/live/junit.xml
+            integration-results/live/summary.md
+            integration-results/live/ledger.json
+          retention-days: 14
+          if-no-files-found: warn
+...

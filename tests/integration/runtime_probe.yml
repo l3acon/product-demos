@@ -1,0 +1,31 @@
+---
+- name: Inspect the candidate execution environment
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: '{{ ansible_playbook_python }}'
+  tasks:
+    - name: Verify Ansible module execution inside the candidate image
+      ansible.builtin.ping:
+
+    - name: Inspect installed collection requirements and runtime metadata
+      ansible.builtin.command:
+        argv:
+          - '{{ ansible_playbook_python }}'
+          - '{{ playbook_dir }}/probe_runtime.py'
+          - '{{ playbook_dir }}/../../execution_environments/requirements-{{ ci_aap_series }}.yml'
+      changed_when: false
+      register: ci_probe
+
+    - name: Publish allowlisted runtime metadata
+      ansible.builtin.set_stats:
+        data:
+          ci_runtime: '{{ ci_probe.stdout | from_json }}'
+        per_host: false
+
+    - name: Require source-compatible collections
+      ansible.builtin.assert:
+        that:
+          - (ci_probe.stdout | from_json).compatible | bool
+        fail_msg: Candidate image has missing or incompatible collections; see the runtime metadata in the CI report.

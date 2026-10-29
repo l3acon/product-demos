@@ -1,0 +1,18 @@
+---
+- name: Remove the unique integration report bucket
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Require a run-owned bucket identifier
+      ansible.builtin.assert:
+        that:
+          - ci_bucket is regex('^apd-ci-[a-f0-9]{24}$')
+
+    - name: Remove the run report bucket and its generated files
+      amazon.aws.s3_bucket:
+        name: '{{ ci_bucket }}'
+        region: '{{ ci_region }}'
+        state: absent
+        force: true
+      no_log: true

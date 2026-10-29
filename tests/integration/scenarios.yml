@@ -1,0 +1,467 @@
+---
+schema_version: 1
+status: design_only
+excluded_categories: [openshift]
+coverage_policy: Every source template must have a planned direct or workflow-child execution.
+ee_under_test:
+  candidate_required: true
+  image_reference: Resolve a published immutable digest built from the exact revision under test.
+  definition: Select execution_environments/apd-ee-<AAP major/minor>.yml after Controller version discovery.
+  default_job_binding: candidate
+  reconciliation: Before first setup, after every setup/seed operation, and before every scenario launch.
+  override_explicit_legacy_bindings: true
+  pull_policy: always
+  verify_each_execution: Record expected image digest and observed job EE; mismatches fail provenance.
+  missing_digest_evidence: Mark EE provenance unverified; never claim verified candidate coverage.
+  supporting_updates: Explicitly bind eligible project/inventory updates and report any platform-required exceptions.
+  restore_configuration: Capture and restore prior project, organization, template and EE settings in finalizers.
+  specialized_job_bindings:
+    Infrastructure | ROSA - Preflight Checks: ROSA Lifecycle EE
+    Infrastructure | ROSA - Create Cluster: ROSA Lifecycle EE
+    Infrastructure | ROSA - Wait for Ready: ROSA Lifecycle EE
+    Infrastructure | ROSA - Destroy Cluster: ROSA Lifecycle EE
+    Infrastructure | Automation Orchestrator | Install: AO Execution Environment
+    Infrastructure | Automation Orchestrator | Uninstall: AO Execution Environment
+    Infrastructure | AO Network Configuration | Install: AO Execution Environment
+  specialized_policy: Resolve these images to declared digests and report their jobs separately from candidate-EE coverage.
+execution_policy:
+  workflow_children: Observe Controller-created child jobs; never relaunch them as parallel copies.
+  failure_branches: Untaken branches are not executed coverage; add explicit recovery cases.
+  default_parallelism: 1
+  readiness: Require expected non-local hosts and successful relevant tasks, not only job status.
+  cleanup: After consumers reach terminal states, attempt owned-resource cleanup even on failure.
+  unknown_live_templates: Report unmapped; do not guess prerequisites or launch automatically.
+  inputs: Resolve surveys, template vars, fixture bindings, and credentials before launching.
+
+gates:
+  controller: Authenticated Controller API, correct organization/project revision, and no active fixture consumers.
+  aws: Configured AWS and APD Machine credentials; SSH private key and Windows password; region and owner.
+  owned_fixtures: Identify resources created by this run; fixed-name existing resources need explicit reuse policy.
+  ee: Register and bind candidate digest, verify specialized image map, and record core/collections/tools before launching.
+  rhsm: Valid RHSM Registration org ID and activation key; repository access on workers and report server.
+  linux_inputs: Existing sudo/key user, public key, benign shell command, service and application package.
+  insights: Insights credential, registration tags/org, inventory access, and externally assigned compliance profile.
+  patch_inputs: Applicable RHEL advisories and removable Windows KBs, with evidence of installable updates.
+  snapshots: Completed run-owned snapshots and exact instance/volume mapping; verified restore targets.
+  hardening_fixtures: Separate disposable hosts and a fresh baseline for each incompatible hardening profile.
+  eda: Synced EDA project, decision environment, running activation, and reachable Kafka listener.
+  network: Rebuilt network EE, image access, AWS capacity, device/SCP credentials, and fresh owned hypervisor.
+  ios_image: SCP server has selected licensed IOS image and matching checksum; device has staging space.
+  panos: Marketplace subscription, firewall and bastion credentials, and run-owned PAN-OS resources.
+  cluster: Existing reachable cluster and scoped credentials; independent of the excluded OpenShift category.
+  ao: AO EE, AAP credential, LiteMaaS integration, and owned AO namespace with captured prior state.
+  rosa: Working ROSA EE/token, STS permissions, quota, unique cluster name, and lifecycle timeout budget.
+  satellite: Reachable configured Satellite, synced content, credentials, RHEL8 image and lifecycle policies.
+  approval: Explicit test policy for approving this run's Satellite workflow approval nodes.
+  feedback_sink: Configured test mailbox/sink for feedback and telemetry; no unintended external recipients.
+  cleanup_adapters: Implement and validate cleanup for resources without APD cleanup templates before execution.
+
+scenarios:
+  - id: bootstrap
+    requires: [controller, aws, owned_fixtures, ee, feedback_sink]
+    locks: [controller_configuration]
+    evidence: [README.md, common/README.md, common/bootstrap-vars.yml, multi_select_setup.yml]
+    steps:
+      - template: APD | Single demo setup
+        bindings: {demo: cloud}
+      - template: APD | Multi-demo setup
+        bindings: {demos: [cloud, linux, windows, network, infrastructure]}
+      - action: Reconcile templates, surveys, credentials and EEs; record missing and unmapped objects.
+    notes: Satellite setup is separate because it launches SETUP | Satellite against an external server.
+
+  - id: cloud-stack
+    needs: [bootstrap]
+    requires: [aws]
+    locks: [aws_test_network]
+    evidence: [cloud/README.md, cloud/docs/deploy-cloud-stack.md]
+    steps:
+      - template: Deploy Cloud Stack in AWS
+      - inventory: AWS Inventory
+      - action: Assert aws-rhel9, aws-rhel10, aws-dc, aws_win1 and reports exist and SSH/WinRM are ready.
+
+  - id: subscriptions
+    needs: [cloud-stack]
+    requires: [rhsm]
+    locks: [cloud_workers, report_server]
+    evidence: [linux/docs/linux-register-rhsm.md, cloud/docs/patch-cloud-stack.md]
+    steps:
+      - template: LINUX | Register RHEL with RHSM
+        bindings: {_hosts: 'aws-rhel9:aws-rhel10:reports'}
+      - action: Assert RHSM registration and package-repository access on all three Linux hosts.
+
+  - id: linux-general
+    needs: [subscriptions]
+    requires: [linux_inputs]
+    locks: [cloud_workers]
+    evidence: [linux/README.md, linux/docs/linux-temporary-sudo.md, linux/docs/linux-system-roles.md]
+    steps:
+      - template: LINUX | Fact Scan
+      - template: LINUX | Troubleshoot
+      - template: LINUX | Run Shell Script
+      - template: LINUX | Add SSH Public Key
+      - template: LINUX | Temporary Sudo
+      - template: LINUX | System Roles
+      - template: LINUX | Install Web Console (cockpit)
+      - template: LINUX | Deploy Application
+        bindings: {application: httpd}
+      - template: LINUX | Start Service
+        bindings: {service_name: httpd}
+      - template: LINUX | Stop Service
+        bindings: {service_name: httpd}
+      - template: LINUX | Start Service
+        bindings: {service_name: httpd}
+      - template: LINUX | Podman Webserver
+      - action: Verify service restored and temporary sudo access expires.
+    notes: This is a proposed stable test sequence; READMEs do not impose an order on independent utility jobs.
+
+  - id: windows-general
+    needs: [cloud-stack]
+    locks: [cloud_windows]
+    evidence: [windows/README.md, windows/docs/windows-password-requirements.md, windows/rollback.yml]
+    steps:
+      - template: WINDOWS | Test Connectivity
+      - template: WINDOWS | Run PowerShell
+      - template: WINDOWS | Query Services
+      - template: WINDOWS | Install IIS
+      - template: WINDOWS | Chocolatey install specific
+      - template: WINDOWS | Chocolatey install multiple
+      - template: WINDOWS | Configuring Password Requirements
+      - template: WINDOWS | Rollback
+      - action: Verify WinRM still works after password policy changes.
+    notes: WINDOWS | Rollback only prints a message; it does not delete infrastructure.
+
+  - id: active-directory
+    needs: [windows-general]
+    requires: [aws]
+    locks: [aws_test_network, ad_domain]
+    evidence: [windows/README.md, windows/docs/windows-setup-ad-domain.md, windows/setup.yml]
+    steps:
+      - template: Setup Active Directory Domain
+      - action: Assert dc01, winston and winthrop exist, domain joins succeeded, and LDAP/Kerberos validation ran.
+      - template: WINDOWS | AD | New User
+      - action: Verify the test user exists; record domain resources for later cleanup.
+
+  - id: insights
+    needs: [subscriptions]
+    requires: [insights]
+    locks: [cloud_workers]
+    evidence: [linux/docs/linux-register-insights.md, linux/docs/linux-insights-compliance-scan.md]
+    steps:
+      - template: LINUX | Register with Insights
+      - inventory: Insights Inventory
+      - action: Wait for registration and externally assigned compliance profile to be visible.
+      - template: LINUX | Insights Compliance Scan
+
+  - id: acme
+    needs: [linux-general]
+    locks: [cloud_workers]
+    evidence: [infrastructure/docs/config-drift-simple.md, infrastructure/acme-app/README.md]
+    steps:
+      - template: Infrastructure | Configuration management - ACME App - Setup
+      - template: Infrastructure | Configuration management - ACME App - Update Configuration
+      - action: Assert the HTTP page contains the selected changed values.
+      - template: Infrastructure | Configuration management - ACME App - Setup
+      - action: Assert the approved baseline was restored.
+
+  - id: event-driven-drift
+    needs: [acme]
+    requires: [eda, cleanup_adapters]
+    locks: [cloud_workers, aws_test_network, eda_activation]
+    evidence: [infrastructure/docs/config-drift.md, infrastructure/docs/config-drift-eda.md]
+    steps:
+      - template: Infrastructure | Config Drift - Full Setup
+      - action: Verify Kafka and activation health and capture a remediation-job correlation watermark.
+      - template: LINUX | Config Drift - Introduce SSHD Drift
+      - observe_template: LINUX | SSHD Configuration Remediation
+        trigger: EDA event for the run's worker IP after the watermark; do not launch remediation manually.
+      - action: Assert a successful correlated remediation job and PermitRootLogin no on each tested worker.
+      - action: Disable the owned activation after observation so later hardening cannot retrigger remediation.
+
+  - id: mattermost
+    needs: [subscriptions]
+    requires: [cleanup_adapters]
+    locks: [aws_test_network]
+    evidence: [infrastructure/docs/mattermost.md]
+    steps:
+      - template: Infrastructure | AWS - Provision Mattermost
+      - action: Assert HTTP health, Controller credential creation and aws_mattermost inventory entry.
+
+  - id: orchestrator
+    needs: [mattermost]
+    requires: [cluster, ao]
+    locks: [ao_namespace, controller_configuration]
+    evidence: [infrastructure/docs/automation-orchestrator.md]
+    steps:
+      - template: Infrastructure | Automation Orchestrator | Install
+      - template: Infrastructure | AO Network Configuration | Install
+      - action: Assert AO health and seeded integrations; inventory newly seeded Controller templates.
+    notes: Network Configuration is redundant on RHDP but is an explicit coverage case. AO-native workflow testing is a later scope.
+
+  - id: cloud-patching
+    needs: [linux-general, windows-general]
+    after_completion: [active-directory, insights, event-driven-drift, orchestrator]
+    requires: [patch_inputs]
+    locks: [cloud_workers, cloud_windows, report_server]
+    evidence: [cloud/docs/patch-cloud-stack.md, linux/docs/linux-patching.md, windows/docs/windows-patching.md]
+    steps:
+      - template: Patch Cloud Stack in AWS
+      - action: Assert both OS paths actually ran and the consolidated report exists; distinguish no applicable updates.
+      - template: LINUX | Patching
+      - template: WINDOWS | Patching
+      - template: Cloud | AWS | Patch Rollback RHEL
+      - template: Cloud | AWS | Patch Rollback Windows
+      - action: Verify installed update/transaction history, rollback evidence and required reboots.
+    notes: Optional consumers must be terminal before patching; unavailable Insights/AO/EDA/AD must not block core patching.
+
+  - id: cloud-recovery
+    needs: [cloud-patching]
+    requires: [snapshots]
+    locks: [cloud_workers, cloud_windows]
+    evidence: [cloud/docs/cloud-snapshot-ec2.md, cloud/docs/cloud-restore-ec2.md, cloud/docs/cloud-resize-ec2.md]
+    steps:
+      - template: Cloud | AWS | Snapshot EC2
+      - action: Wait for completed snapshots and verify exact ownership/volume mappings.
+      - template: Cloud | AWS | Resize EC2
+        bindings: {_hosts: aws-rhel9}
+      - inventory: AWS Inventory
+      - template: Cloud | AWS | Restore EC2 from Snapshot
+      - inventory: AWS Inventory
+      - action: Assert expected hosts and services recover after volume restore and IP refresh.
+    notes: Explicit restore covers the template even when workflow failure branches are not taken.
+
+  - id: linux-hardening
+    needs: [cloud-recovery]
+    requires: [hardening_fixtures]
+    locks: [disposable_linux, report_server]
+    evidence: [linux/README.md, linux/docs/linux-compliance-workflow.md, linux/compliance_profiles.md]
+    steps:
+      - action: Provision and register a separate RHEL9 test fixture; bind workflow _hosts to it.
+      - template: Linux | Compliance Workflow
+      - action: Check actual out-of-compliance host membership and enforcement task execution.
+      - template: LINUX | Multi-profile Compliance Report
+      - action: Reset/reprovision the disposable fixture before independent direct enforcement.
+      - template: LINUX | Multi-profile Compliance
+      - template: LINUX | Multi-profile Compliance Report
+      - action: Reset/reprovision the disposable fixture before DISA STIG.
+      - template: LINUX | DISA STIG
+      - action: Record post-hardening access and dispose of the dedicated fixture.
+    notes: Profile/OS matrix is separate from template coverage; do not apply every profile to one shared worker.
+
+  - id: windows-hardening
+    needs: [cloud-recovery]
+    requires: [hardening_fixtures]
+    locks: [disposable_windows]
+    evidence: [windows/docs/windows-disa-stig.md]
+    steps:
+      - action: Provision separate Windows Server 2022 fixture and verify WinRM readiness.
+      - template: WINDOWS | DISA STIG
+      - action: Capture compliance/access evidence and dispose of the dedicated fixture.
+
+  - id: containerlab
+    needs: [bootstrap]
+    requires: [network]
+    locks: [containerlab, aws_capacity]
+    evidence: [network/README.md, network/docs/network-staging-upgrade.md]
+    steps:
+      - template: NETWORK | Deploy Containerlab Stack
+      - template: NETWORK | Containerlab | Configure Devices
+      - template: NETWORK | Containerlab | Validate Devices
+      - template: NETWORK | Containerlab | Troubleshoot
+      - template: NETWORK | Report
+      - template: NETWORK | Backup
+      - template: NETWORK | DISA STIG
+    notes: Provision Hypervisor deliberately fails if a lab already exists. Reserve a fresh owned fixture for full workflow coverage.
+
+  - id: containerlab-upgrade
+    needs: [containerlab]
+    requires: [ios_image]
+    locks: [containerlab]
+    evidence: [network/docs/network-staging-upgrade.md]
+    steps:
+      - template: NETWORK | Staging
+      - template: NETWORK | Upgrade
+      - template: NETWORK | Containerlab | Validate Devices
+      - template: NETWORK | Report
+
+  - id: panos
+    needs: [bootstrap]
+    requires: [panos]
+    locks: [panos_network, aws_capacity]
+    evidence: [network/docs/network-panos-workflow.md, network/setup.yml]
+    steps:
+      - template: NETWORK | Panos | Demo Firewall Workflow
+      - template: NETWORK | Panos | Configure Security Rule
+        bindings: {panos_action: deny}
+      - action: Assert traffic is denied.
+      - template: NETWORK | Panos | Configure Security Rule
+        bindings: {panos_action: allow}
+      - action: Assert traffic is restored.
+
+  - id: peer-network
+    needs: [bootstrap]
+    requires: [aws, cleanup_adapters]
+    locks: [advanced_cloud_network]
+    evidence: [cloud/docs/cloud-peer-networking.md, cloud/create_peer_network.yml]
+    steps:
+      - action: Bind existing DMZ/private SSH keypair names and complete network fixture variables.
+      - template: Cloud | AWS | Create Peer Infrastructure
+      - action: Assert expected VPC peer links, routes and DMZ-to-private connectivity.
+
+  - id: transit-network
+    after_completion: [peer-network-cleanup]
+    requires: [aws, cleanup_adapters]
+    locks: [advanced_cloud_network]
+    evidence: [cloud/docs/cloud-transit-networking.md, cloud/create_transit_network.yml]
+    steps:
+      - action: Bind DMZ/private SSH keypair names and complete network fixture variables.
+      - template: Cloud | AWS | Create Transit Infrastructure
+      - action: Assert transit attachments, routes and DMZ-to-private connectivity.
+
+  - id: rosa
+    needs: [bootstrap]
+    requires: [rosa]
+    locks: [rosa_cluster, aws_capacity]
+    evidence: [infrastructure/docs/rosa-lifecycle.md]
+    steps:
+      - template: Infrastructure | ROSA - Lifecycle (Create)
+      - action: Assert cluster ready and record lifecycle identifiers; do not infer this from a submitted create request.
+
+  - id: vault
+    needs: [bootstrap]
+    requires: [cluster]
+    locks: [vault_namespace]
+    evidence: [infrastructure/README.md, infrastructure/hashicorp_vault.yml]
+    steps:
+      - template: Infrastructure | HashiCorp Vault
+        bindings: {vault_operation: install}
+      - action: Assert Vault health and seeded KV/userpass configuration without exporting tokens.
+
+  - id: policy
+    after_completion: [orchestrator-cleanup, cloud-cleanup, containerlab-cleanup, panos-cleanup, rosa-cleanup, satellite, vault-cleanup, transit-network-cleanup, feedback]
+    requires: [cluster, cleanup_adapters]
+    locks: [controller_configuration, opa_namespace]
+    evidence: [infrastructure/docs/opa-policy-as-code.md, infrastructure/opa/deploy-opa.yml]
+    steps:
+      - action: Capture Controller policy settings; restrict policy experiments to a dedicated test scope.
+      - template: Infrastructure | OPA - Deploy Open Policy Agent on OpenShift
+      - template: Infrastructure | OPA - Add Policy
+      - action: Assert policy availability and restore Controller settings/remove owned OPA resources in a finalizer.
+    notes: Scheduled last because global policy configuration can affect all subsequent launches.
+
+  - id: mcp
+    after_completion: [policy]
+    requires: [cluster]
+    locks: [controller_configuration]
+    evidence: [infrastructure/aap-mcp-operator.yml, infrastructure/aap-mcp-operator-disable.yml]
+    steps:
+      - action: Capture AAP MCP CR settings and wait for Controller health.
+      - template: Infrastructure | Enable AAP MCP server on operator deployment
+      - action: Assert MCP endpoint availability and Controller health after operator reconciliation.
+      - template: Infrastructure | Disable AAP MCP server on operator deployment
+      - action: Assert disabled state and restore the original CR settings in a finalizer.
+
+  - id: satellite
+    needs: [bootstrap]
+    requires: [satellite, approval, cleanup_adapters]
+    locks: [satellite_fixture, report_server]
+    evidence: [satellite/README.md, satellite/setup.yml, satellite/docs/satellite-patch-dev.md]
+    steps:
+      - template: APD | Single demo setup
+        bindings: {demo: satellite}
+      - observe_template: SETUP | Satellite
+        trigger: Category setup automatically launches this job; await its terminal status.
+      - action: Provision separate RHEL8 fixture; verify RHEL8 content view and RHEL8_Dev activation key.
+      - template: LINUX | Register with Satellite
+      - inventory: Satellite Inventory
+      - template: LINUX | Compliance Scan with Satellite
+      - template: Patch Dev
+        approval_policy: Monitor and resolve this run's approval node while waiting for the workflow, never after it completes.
+      - action: Verify approval evidence and applied patches.
+      - template: SATELLITE | Promote Content View Version
+      - action: Assert promoted version and remove only the run's disposable host/registration.
+    notes: Cloud stack uses RHEL9/10; Patch Dev hardcodes RHEL8, so its fixture cannot be borrowed from that stack.
+
+  - id: feedback
+    needs: [bootstrap]
+    requires: [feedback_sink]
+    evidence: [common/setup.yml, feedback.yml]
+    steps:
+      - template: SUBMIT FEEDBACK
+      - action: Validate feedback result with the configured test sink.
+
+  - id: peer-network-cleanup
+    after_completion: [peer-network]
+    requires: [aws]
+    locks: [advanced_cloud_network]
+    evidence: [cloud/delete_peer_network.yml]
+    steps:
+      - template: Cloud | AWS | Delete Peer Infrastructure
+
+  - id: transit-network-cleanup
+    after_completion: [transit-network]
+    requires: [aws]
+    locks: [advanced_cloud_network]
+    evidence: [cloud/delete_transit_network.yml]
+    steps:
+      - template: Cloud | AWS | Delete Transit Infrastructure
+
+  - id: containerlab-cleanup
+    after_completion: [containerlab, containerlab-upgrade]
+    requires: [aws]
+    locks: [containerlab]
+    evidence: [network/docs/network-destroy-containerlab-stack.md]
+    steps:
+      - template: NETWORK | Destroy Containerlab Stack
+      - action: Assert topology, hypervisor and owned AWS networking are absent.
+
+  - id: panos-cleanup
+    after_completion: [panos]
+    requires: [aws]
+    locks: [panos_network]
+    evidence: [network/panos/cleanup.yml]
+    steps:
+      - template: NETWORK | Panos | Cleanup
+      - action: Assert owned firewall, webserver, bastion and AWS network resources are absent.
+
+  - id: rosa-cleanup
+    after_completion: [rosa]
+    requires: [rosa]
+    locks: [rosa_cluster]
+    evidence: [infrastructure/docs/rosa-lifecycle.md]
+    steps:
+      - template: Infrastructure | ROSA - Lifecycle (Destroy)
+      - action: Assert cluster, operator roles and OIDC resources are gone.
+
+  - id: vault-cleanup
+    after_completion: [vault]
+    requires: [cluster]
+    locks: [vault_namespace]
+    evidence: [infrastructure/hashicorp_vault.yml]
+    steps:
+      - template: Infrastructure | HashiCorp Vault
+        bindings: {vault_operation: uninstall}
+
+  - id: orchestrator-cleanup
+    after_completion: [orchestrator]
+    requires: [cluster, ao]
+    locks: [ao_namespace]
+    evidence: [infrastructure/docs/automation-orchestrator.md]
+    steps:
+      - template: Infrastructure | Automation Orchestrator | Uninstall
+      - action: Wait for owned namespace removal and restore prior integration state.
+
+  - id: cloud-cleanup
+    after_completion: [linux-hardening, windows-hardening, active-directory, event-driven-drift, mattermost, orchestrator-cleanup, satellite, insights]
+    requires: [aws, cleanup_adapters]
+    locks: [aws_test_network, cloud_workers, cloud_windows, report_server]
+    evidence: [cloud/docs/cloud-destroy-stack.md, infrastructure/docs/config-drift-kafka.md, infrastructure/docs/mattermost.md]
+    steps:
+      - action: Disable owned EDA activation; export reports and stop all run-owned consumers.
+      - template: Cloud | AWS | Delete VM
+        for_each_owned_host: [aws_kafka, aws_mattermost, dc01, winston, winthrop]
+      - action: Delete extra disposable test VMs, snapshots and report buckets through ownership-aware adapters.
+      - template: Destroy Cloud Stack in AWS
+      - inventory: AWS Inventory
+      - action: Assert all owned instances and stack networking are absent; report leaks separately.
+    notes: Destroy Cloud Stack deletes only its five named VMs; Kafka, Mattermost and AD VMs must go before VPC deletion.
+...

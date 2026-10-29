@@ -1,0 +1,89 @@
+flowchart TD
+  bootstrap["bootstrap"]
+  cloud_stack["cloud-stack"]
+  subscriptions["subscriptions"]
+  linux_general["linux-general"]
+  windows_general["windows-general"]
+  active_directory["active-directory"]
+  insights["insights"]
+  acme["acme"]
+  event_driven_drift["event-driven-drift"]
+  mattermost["mattermost"]
+  orchestrator["orchestrator"]
+  cloud_patching["cloud-patching"]
+  cloud_recovery["cloud-recovery"]
+  linux_hardening["linux-hardening"]
+  windows_hardening["windows-hardening"]
+  containerlab["containerlab"]
+  containerlab_upgrade["containerlab-upgrade"]
+  panos["panos"]
+  peer_network["peer-network"]
+  transit_network["transit-network"]
+  rosa["rosa"]
+  vault["vault"]
+  policy["policy"]
+  mcp["mcp"]
+  satellite["satellite"]
+  feedback["feedback"]
+  peer_network_cleanup["peer-network-cleanup"]
+  transit_network_cleanup["transit-network-cleanup"]
+  containerlab_cleanup["containerlab-cleanup"]
+  panos_cleanup["panos-cleanup"]
+  rosa_cleanup["rosa-cleanup"]
+  vault_cleanup["vault-cleanup"]
+  orchestrator_cleanup["orchestrator-cleanup"]
+  cloud_cleanup["cloud-cleanup"]
+  bootstrap --> cloud_stack
+  cloud_stack --> subscriptions
+  subscriptions --> linux_general
+  cloud_stack --> windows_general
+  windows_general --> active_directory
+  subscriptions --> insights
+  linux_general --> acme
+  acme --> event_driven_drift
+  subscriptions --> mattermost
+  mattermost --> orchestrator
+  linux_general --> cloud_patching
+  windows_general --> cloud_patching
+  active_directory -. terminal .-> cloud_patching
+  insights -. terminal .-> cloud_patching
+  event_driven_drift -. terminal .-> cloud_patching
+  orchestrator -. terminal .-> cloud_patching
+  cloud_patching --> cloud_recovery
+  cloud_recovery --> linux_hardening
+  cloud_recovery --> windows_hardening
+  bootstrap --> containerlab
+  containerlab --> containerlab_upgrade
+  bootstrap --> panos
+  bootstrap --> peer_network
+  peer_network_cleanup -. terminal .-> transit_network
+  bootstrap --> rosa
+  bootstrap --> vault
+  orchestrator_cleanup -. terminal .-> policy
+  cloud_cleanup -. terminal .-> policy
+  containerlab_cleanup -. terminal .-> policy
+  panos_cleanup -. terminal .-> policy
+  rosa_cleanup -. terminal .-> policy
+  satellite -. terminal .-> policy
+  vault_cleanup -. terminal .-> policy
+  transit_network_cleanup -. terminal .-> policy
+  feedback -. terminal .-> policy
+  policy -. terminal .-> mcp
+  bootstrap --> satellite
+  bootstrap --> feedback
+  peer_network -. terminal .-> peer_network_cleanup
+  transit_network -. terminal .-> transit_network_cleanup
+  containerlab -. terminal .-> containerlab_cleanup
+  containerlab_upgrade -. terminal .-> containerlab_cleanup
+  panos -. terminal .-> panos_cleanup
+  rosa -. terminal .-> rosa_cleanup
+  vault -. terminal .-> vault_cleanup
+  orchestrator -. terminal .-> orchestrator_cleanup
+  linux_hardening -. terminal .-> cloud_cleanup
+  windows_hardening -. terminal .-> cloud_cleanup
+  active_directory -. terminal .-> cloud_cleanup
+  event_driven_drift -. terminal .-> cloud_cleanup
+  mattermost -. terminal .-> cloud_cleanup
+  orchestrator_cleanup -. terminal .-> cloud_cleanup
+  satellite -. terminal .-> cloud_cleanup
+  insights -. terminal .-> cloud_cleanup
