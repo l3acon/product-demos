@@ -138,6 +138,22 @@ class BuildTests(unittest.TestCase):
                     if value.startswith("secret-")
                 )
             )
+            if arguments[:2] == ["podman", "build"]:
+                for index, argument in enumerate(arguments):
+                    if argument == "--secret":
+                        specification = dict(
+                            part.split("=", 1)
+                            for part in arguments[index + 1].split(",")
+                        )
+                        self.assertEqual(
+                            specification["type"],
+                            "file",
+                            "CI exports variables with the same IDs; auto-detection would read an empty env secret",
+                        )
+                        self.assertEqual(
+                            Path(specification["src"]).read_text(),
+                            environment[specification["id"]],
+                        )
             if arguments[:2] == ["skopeo", "inspect"]:
                 return json.dumps({"Digest": "sha256:" + "b" * 64})
             if arguments[:2] == ["ansible-builder", "create"]:

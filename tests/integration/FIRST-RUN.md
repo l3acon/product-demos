@@ -79,7 +79,10 @@ building; only the HTTP status and an allowlisted error code enter the report.
 
 CI resolves the base tag to a digest and builds with that digest. Hub tokens use
 required Podman secret mounts in the two Galaxy install commands, rather than
-build arguments. Temporary auth/token files live outside the build context and
+build arguments. Secret sources explicitly use `type=file`: automatic detection
+can otherwise select environment mode when CI exports a variable with the same
+secret ID, causing the supplied file path to be read as an environment variable name.
+Temporary auth/token files live outside the build context and
 are removed after the step. Generated build contexts and raw logs are not uploaded.
 
 The built image must pass the same runtime compatibility probe locally before

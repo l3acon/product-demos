@@ -337,7 +337,7 @@ def build(args, report):
             secret = private / token
             secret.write_text(tokens[token])
             secret.chmod(0o600)
-            secrets += ["--secret", f"id={token},src={secret}"]
+            secrets += ["--secret", f"id={token},src={secret},type=file"]
         command(
             [
                 "podman",
