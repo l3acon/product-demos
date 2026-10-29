@@ -483,7 +483,7 @@ def main():
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a") as output:
                 output.write(
-                    f"image={image}\nbuilt={str(not bool(args.external_image)).lower()}\n"
+                    f"image={image}\nbuilt={str(not bool(args.external_image)).lower()}\nevidence=apd-ee-build-{args.run_id}\n"
                 )
         return 0
     except (BuildError, ValueError, KeyError, requests.RequestException) as error:

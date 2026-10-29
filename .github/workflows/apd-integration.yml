@@ -61,6 +61,7 @@ jobs:
     outputs:
       image: ${{ steps.image.outputs.image }}
       built: ${{ steps.image.outputs.built }}
+      evidence: ${{ steps.image.outputs.evidence }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -157,9 +158,10 @@ jobs:
       - name: Download the candidate build provenance
         env:
           GH_TOKEN: ${{ github.token }}
+          CANDIDATE_EVIDENCE: ${{ needs.candidate.outputs.evidence }}
         run: |
           gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-            --name "apd-ee-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --name "$CANDIDATE_EVIDENCE" \
             --dir integration-results/ee-build
       - name: Configure baseline, provision fixtures, test and finalize
         env:
