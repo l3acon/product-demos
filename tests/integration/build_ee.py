@@ -25,10 +25,59 @@ TOKENS = (
     "ANSIBLE_GALAXY_SERVER_VALIDATED_TOKEN",
 )
 RPM_DIRECTORY = "https://mirror.openshift.com/pub/openshift-v4/amd64/dependencies/rpms/4.18-el9-beta/"
+HUB_AUTH_URL = (
+    "https://sso.redhat.com/auth/realms/redhat-external/protocol/openid-connect/token"
+)
 
 
 class BuildError(RuntimeError):
     pass
+
+
+def check_hub_tokens(tokens, report):
+    for name, token in tokens.items():
+        if not re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", token):
+            raise BuildError(
+                f"{name} must contain the Automation Hub offline token only, without quotes or a Bearer prefix"
+            )
+        response = requests.post(
+            HUB_AUTH_URL,
+            data={
+                "grant_type": "refresh_token",
+                "client_id": "cloud-services",
+                "refresh_token": token,
+            },
+            timeout=60,
+            allow_redirects=False,
+        )
+        try:
+            result = response.json()
+        except ValueError:
+            result = {}
+        if not isinstance(result, dict):
+            result = {}
+        if response.status_code != 200 or not isinstance(
+            result.get("access_token"), str
+        ):
+            error = result.get("error")
+            if error not in (
+                "invalid_grant",
+                "invalid_client",
+                "invalid_request",
+                "unauthorized_client",
+            ):
+                error = "unclassified_authentication_error"
+            raise BuildError(
+                f"Automation Hub rejected {name}: HTTP {response.status_code} ({error}). Set both Hub secrets to the same current offline token from console.redhat.com/ansible/automation-hub/token; no token values or raw response are reported."
+            )
+        report["cases"].append(
+            {
+                "name": name.replace(
+                    "ANSIBLE_GALAXY_SERVER_", "Automation Hub "
+                ).replace("_TOKEN", " authentication"),
+                "status": "passed",
+            }
+        )
 
 
 def command(arguments, *, capture=False, stdin=None, cwd=None):
@@ -169,6 +218,8 @@ def build(args, report):
             + ", ".join(missing)
             + ". Configure repository secrets before retrying."
         )
+    tokens = {name: os.environ[name].strip() for name in TOKENS}
+    check_hub_tokens(tokens, report)
     metadata = report["ee_build"]
     tag = (
         f"ghcr.io/{args.repository.lower()}/apd-ee-27:ci-{args.revision}-{args.run_id}"
@@ -251,7 +302,7 @@ def build(args, report):
         secrets = []
         for token in TOKENS:
             secret = private / token
-            secret.write_text(os.environ[token])
+            secret.write_text(tokens[token])
             secret.chmod(0o600)
             secrets += ["--secret", f"id={token},src={secret}"]
         command(
@@ -406,7 +457,7 @@ def main():
         message = (
             str(error)
             if isinstance(error, (BuildError, ValueError))
-            else "EE build metadata or download failed; inspect the build step"
+            else "EE build metadata, authentication or download request failed; inspect the build step"
         )
         report["cases"].append(
             {"name": "Candidate EE preparation", "status": "failed", "summary": message}

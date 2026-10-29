@@ -6,11 +6,18 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from build_ee import BuildError, TOKENS, build, secure_galaxy_steps, validate_metadata
+from build_ee import (
+    BuildError,
+    TOKENS,
+    build,
+    check_hub_tokens,
+    secure_galaxy_steps,
+    validate_metadata,
+)
 
 
 CONTAINERFILE = "\n".join(
@@ -24,6 +31,25 @@ CONTAINERFILE = "\n".join(
 
 
 class BuildTests(unittest.TestCase):
+    def test_hub_authentication_reports_only_allowlisted_error_codes(self):
+        response = Mock(status_code=400)
+        response.json.return_value = {
+            "error": "invalid_grant",
+            "error_description": "DO-NOT-PUBLISH",
+        }
+        with patch("build_ee.requests.post", return_value=response):
+            with self.assertRaises(BuildError) as raised:
+                check_hub_tokens({TOKENS[0]: "offline.token.value"}, {"cases": []})
+        self.assertIn("invalid_grant", str(raised.exception))
+        self.assertNotIn("DO-NOT-PUBLISH", str(raised.exception))
+        self.assertNotIn("offline.token.value", str(raised.exception))
+
+    def test_hub_token_format_is_checked_before_authentication(self):
+        with patch("build_ee.requests.post") as request:
+            with self.assertRaisesRegex(BuildError, "without quotes"):
+                check_hub_tokens({TOKENS[0]: '"pasted.token.value"'}, {"cases": []})
+            request.assert_not_called()
+
     def test_every_galaxy_install_uses_required_secret_mounts(self):
         secured = secure_galaxy_steps(CONTAINERFILE)
         for token in TOKENS:
@@ -89,9 +115,9 @@ class BuildTests(unittest.TestCase):
                     "sha256:" + "c" * 64
                 )
 
-        with patch.dict("os.environ", environment, clear=True), patch(
-            "build_ee.command", side_effect=execute
-        ), patch(
+        with patch("build_ee.check_hub_tokens"), patch.dict(
+            "os.environ", environment, clear=True
+        ), patch("build_ee.command", side_effect=execute), patch(
             "build_ee.client_rpm",
             return_value="https://mirror.openshift.com/client.rpm",
         ), patch(

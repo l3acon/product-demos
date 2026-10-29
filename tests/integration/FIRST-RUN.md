@@ -72,6 +72,11 @@ Configure these repository secrets once:
 | `ANSIBLE_GALAXY_SERVER_CERTIFIED_TOKEN` | Download certified collections |
 | `ANSIBLE_GALAXY_SERVER_VALIDATED_TOKEN` | Download validated collections |
 
+Use the same current [Automation Hub offline token](https://console.redhat.com/ansible/automation-hub/token)
+for both Hub secrets, without quotes or a Bearer prefix. Generating a new token
+can revoke the previous one. CI validates their format and SSO refresh before
+building; only the HTTP status and an allowlisted error code enter the report.
+
 CI resolves the base tag to a digest and builds with that digest. Hub tokens use
 required Podman secret mounts in the two Galaxy install commands, rather than
 build arguments. Temporary auth/token files live outside the build context and
