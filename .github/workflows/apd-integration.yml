@@ -97,6 +97,9 @@ jobs:
     environment: apd-integration
     runs-on: ubuntu-latest
     timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
@@ -110,6 +113,7 @@ jobs:
           APD_USERNAME: ${{ secrets.APD_USERNAME }}
           APD_PASSWORD: ${{ secrets.APD_PASSWORD }}
           APD_TOKEN: ${{ secrets.APD_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           CANDIDATE_IMAGE: ${{ needs.prepare.outputs.image }}
           TEST_PROFILE: ${{ inputs.profile || vars.APD_TEST_PROFILE || 'baseline-smoke' }}
           TEST_REGION: ${{ inputs.region || vars.APD_TEST_REGION || 'us-east-2' }}

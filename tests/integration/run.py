@@ -18,6 +18,7 @@ import uuid
 from build_graph import build, load
 from controller import Controller, ControllerError
 from report import render
+from recovery import previous_evidence, reconcile_preprovisioning
 import yaml
 
 
@@ -230,6 +231,8 @@ class Runner:
         row = {"name": name, "status": status, "kind": kind, **values}
         self.report["cases"].append(row)
         print(f"{status}: {name}", flush=True)
+        if status == "failed" and values.get("summary"):
+            print(values["summary"], flush=True)
         self.checkpoint()
         return row
 
@@ -250,12 +253,21 @@ class Runner:
         heartbeat = self.clock() + 60
         self.active.add(path)
         self.checkpoint()
+        events_deadline = None
         while self.clock() < end:
             row = self.api.get(path)
             if row.get("status") in TERMINAL:
-                self.active.discard(path)
-                self.checkpoint()
-                return row
+                # Terminal execution can precede ingestion of set_stats and error events.
+                if row.get("event_processing_finished") is not False:
+                    self.active.discard(path)
+                    self.checkpoint()
+                    return row
+                if events_deadline is None:
+                    events_deadline = self.clock() + 120
+                if self.clock() >= events_deadline:
+                    self.active.discard(path)
+                    self.checkpoint()
+                    return row
             if self.clock() >= heartbeat:
                 print(
                     f"waiting: Controller job {row['id']} is {row.get('status', 'pending')}",
@@ -314,8 +326,23 @@ class Runner:
             and row["organization"] == self.org
         ]
         if existing_leases:
-            raise ControllerError(
-                "Another integration lease exists; reconcile that run before retrying"
+            if len(existing_leases) != 1:
+                raise ControllerError(
+                    "Multiple integration leases exist; manual reconciliation required"
+                )
+            old = existing_leases[0]
+            state = variables(old.get("variables"))
+            ledger, report = previous_evidence(
+                self.args.repository, state.get("run_id")
+            )
+            previous = reconcile_preprovisioning(
+                self.api, old, ledger, report, self.org, self.project["id"]
+            )
+            self.case(
+                "Previous pre-provisioning lease recovery",
+                "passed",
+                summary="Verified a completed prior run with no infrastructure provisioning; removed only its temporary Controller objects.",
+                previous_run=previous,
             )
         self.lease = self.create(
             "inventories",
@@ -440,6 +467,33 @@ class Runner:
                 "unverified",
             )
         runtime = job.get("artifacts", {}).get("ci_runtime")
+        if not isinstance(runtime, dict) and name == "Candidate runtime validation":
+            events = self.api.list(
+                job["url"] + "job_events/?event=runner_on_ok&page_size=200"
+            )
+            for event in events:
+                result = event.get("event_data", {}).get("res", {})
+                observed = (
+                    result.get("ansible_stats", {}).get("data", {}).get("ci_runtime")
+                )
+                if isinstance(observed, dict):
+                    runtime = observed
+            if not isinstance(runtime, dict):
+                # The registered command result is another structured source if stats were not persisted.
+                for event in events:
+                    if (
+                        event.get("task", event.get("event_data", {}).get("task"))
+                        != "Inspect installed collection requirements and runtime metadata"
+                    ):
+                        continue
+                    try:
+                        observed = json.loads(
+                            event.get("event_data", {}).get("res", {}).get("stdout", "")
+                        )
+                    except (ValueError, TypeError):
+                        continue
+                    if isinstance(observed, dict):
+                        runtime = observed
         if isinstance(runtime, dict):
             self.report["runtime"] = public_runtime(runtime)
         hosts = sum(job.get("host_status_counts", {}).values())
@@ -521,6 +575,30 @@ class Runner:
                     + ", ".join(sorted(categories))
                     + ". Inspect the Controller job for full output."
                 )
+        if name == "Candidate runtime validation":
+            if self.report["runtime"]:
+                checked = self.report["runtime"]
+                bad = [
+                    row["name"]
+                    for row in checked.get("collections", [])
+                    if row["status"] != "compatible"
+                ]
+                missing = [
+                    key
+                    for key, value in checked.get("packages", {}).items()
+                    if value == "unavailable"
+                ]
+                tools = [
+                    key for key, value in checked.get("tools", {}).items() if not value
+                ]
+                if not checked.get("compatible"):
+                    status = "failed"
+                    categories = {"ee_compatibility"}
+                    summary = f"EE validation failed: collections={', '.join(bad) or 'none'}; missing Python packages={', '.join(missing) or 'none'}; tool checks={', '.join(tools) or 'none'}."
+            else:
+                status = "failed"
+                categories.add("runtime_metadata_unavailable")
+                summary = "Runtime probe failed without structured metadata; inspect the Controller job."
         row = self.case(
             name,
             status,
@@ -905,9 +983,15 @@ class Runner:
                 self.api.delete(
                     f"/api/controller/v2/{resource['kind']}/{resource['id']}/"
                 )
-            except ControllerError:
+            except ControllerError as error:
                 self.report["cleanup"].append(
-                    {"resource": resource["kind"], "status": "failed"}
+                    {
+                        "resource": resource["kind"],
+                        "id": resource["id"],
+                        "name": resource["name"],
+                        "status": "failed",
+                        "summary": str(error),
+                    }
                 )
         failed_cleanup = any(
             row["status"] == "failed" for row in self.report["cleanup"]

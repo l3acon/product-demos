@@ -127,6 +127,8 @@ class FakeController:
         return rows[0]
 
     def get(self, path, **kwargs):
+        if kwargs.get("missing_ok") and path not in self.objects:
+            return None
         if path == "/api/gateway/v1/ping/":
             return {"version": "2.7.0"}
         if path.endswith("survey_spec/"):
@@ -537,6 +539,93 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(
             variables({"regions": ["us-east-2"]}), {"regions": ["us-east-2"]}
         )
+
+    def test_runtime_stats_are_recovered_when_job_artifacts_are_empty(self):
+        runner = self.runner()
+        runner.configure()
+        runtime = {
+            "core": "2.16.19",
+            "compatible": False,
+            "tools": {"helm": False, "oc": True, "terraform": True},
+            "packages": {"ncclient": "0.7.0", "passlib": "1.7.4", "pywinrm": "0.5.0"},
+            "collections": [
+                {
+                    "name": "amazon.aws",
+                    "version": "10.0.0",
+                    "requires_ansible": ">=2.17.0",
+                    "source_constraint": ">=7.5.0,<10.0.0",
+                    "status": "outside_source_constraint",
+                }
+            ],
+            "secret": "DO-NOT-REPORT",
+        }
+        original = self.api.list
+        self.api.list = (
+            lambda path: [
+                {
+                    "event_data": {
+                        "res": {"ansible_stats": {"data": {"ci_runtime": runtime}}}
+                    }
+                }
+            ]
+            if "runner_on_ok" in path
+            else original(path)
+        )
+        job = self.api.add(
+            "jobs",
+            {
+                "name": "runtime",
+                "type": "job",
+                "status": "failed",
+                "execution_environment": self.api.ee,
+                "scm_revision": self.args.revision,
+                "artifacts": {},
+            },
+        )
+        self.assertFalse(
+            runner.record_job(job, "Candidate runtime validation", "diagnostic")
+        )
+        self.assertEqual(runner.report["runtime"]["core"], "2.16.19")
+        self.assertIn("amazon.aws", runner.report["cases"][-1]["summary"])
+        self.assertIn("helm", runner.report["cases"][-1]["summary"])
+        self.assertNotIn(
+            "DO-NOT-REPORT", (self.args.output / "report.json").read_text()
+        )
+        self.assertIn(
+            "EE validation failures", (self.args.output / "report.html").read_text()
+        )
+
+    def test_terminal_execution_waits_for_event_ingestion(self):
+        current = [0]
+        runner = Runner(
+            self.api,
+            self.args,
+            clock=lambda: current[0],
+            sleep=lambda _: current.__setitem__(0, current[0] + 1),
+        )
+        job = self.api.add(
+            "jobs",
+            {
+                "name": "finished",
+                "type": "job",
+                "status": "successful",
+                "event_processing_finished": False,
+            },
+        )
+        original = self.api.get
+        calls = []
+
+        def get(path, **kwargs):
+            row = original(path, **kwargs)
+            calls.append(path)
+            row["event_processing_finished"] = len(calls) > 1
+            return row
+
+        self.api.get = get
+        finished = runner.wait(job["url"], timeout=10)
+        self.assertTrue(finished["event_processing_finished"])
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(runner.active)
 
     def test_wrong_image_cannot_count_as_candidate_coverage(self):
         runner = self.runner()

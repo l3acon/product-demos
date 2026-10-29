@@ -69,6 +69,41 @@ def render(report, directory):
         for name, status in sorted(coverage.items())
     )
     runtime = escape(json.dumps(report.get("runtime", {}), indent=2))
+    diagnostics = report.get("runtime", {})
+    failed_checks = [
+        (
+            row.get("name"),
+            row.get("version"),
+            row.get("source_constraint"),
+            row.get("requires_ansible"),
+            row.get("status"),
+        )
+        for row in diagnostics.get("collections", [])
+        if row.get("status") != "compatible"
+    ]
+    failed_checks += [
+        (name, value, "installed", "", "missing Python package")
+        for name, value in diagnostics.get("packages", {}).items()
+        if value == "unavailable"
+    ]
+    failed_checks += [
+        (name, "failed", "executable succeeds", "", "tool check failed")
+        for name, value in diagnostics.get("tools", {}).items()
+        if not value
+    ]
+    failures = "".join(
+        "<tr>"
+        + "".join(f"<td>{escape(str(value or ''))}</td>" for value in row)
+        + "</tr>"
+        for row in failed_checks
+    )
+    runtime_failures = (
+        "<h2>EE validation failures</h2><table><thead><tr><th>Check</th><th>Observed</th><th>Source requirement</th><th>Required core</th><th>Result</th></tr></thead><tbody>"
+        + failures
+        + "</tbody></table>"
+        if failed_checks
+        else ""
+    )
     html = f"""<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
@@ -83,7 +118,7 @@ pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#eaf0f5;padding:16px
 </style><main><h1>{title}</h1><p>{escape(summary)}</p>
 <p class="note">{escape(report.get('scope', ''))}</p><dl>{items}</dl>
 <h2>Executions and assertions</h2><table><thead><tr><th>Case</th><th>Status</th><th>Job ID</th><th>EE evidence</th><th>Hosts</th><th>Result</th></tr></thead><tbody>{body}</tbody></table>
-<h2>Candidate runtime</h2><pre>{runtime}</pre>
+{runtime_failures}<h2>Candidate runtime</h2><pre>{runtime}</pre>
 <h2>Full catalog coverage</h2><p>Only reached APD template executions count. Diagnostic jobs are listed separately above.</p>
 <table><thead><tr><th>Template</th><th>Coverage</th></tr></thead><tbody>{coverage_rows}</tbody></table>
 <h2>Cleanup</h2><pre>{escape(json.dumps(report.get('cleanup', []), indent=2))}</pre>

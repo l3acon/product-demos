@@ -60,6 +60,26 @@ starting a new run. Preparation resolves tags to digests once, before approval.
 The default public image does not need registry credentials in GitHub. Private
 image resolution/build credentials are not implemented in this first preview.
 
+### Initial image finding
+
+The first approved run correctly stopped at EE validation. A local amd64 execution
+of the same pinned digest reproduced these findings on October 29, 2026:
+
+| Component | Installed | Candidate source requirement / result |
+| --- | --- | --- |
+| Ansible core | 2.16.19 | Four installed collections below require core >=2.18 |
+| community.general | 13.5.0 | Requires core >=2.18; source requires <12 |
+| chocolatey.chocolatey | 1.6.0 | Requires core >=2.18; source requires <1.6 |
+| amazon.aws | 12.0.0 | Requires core >=2.18; source requires <10 |
+| community.aws | 12.0.0 | Requires core >=2.18; source requires <10 |
+| arista.eos | Absent | Source requires 12.3.0 |
+| juniper.device | Absent | Source requires 2.0.1 |
+| passlib | Absent | EE definition requires >=1.7.4 |
+
+The image needs rebuilding from the current requirements before this profile can
+proceed to infrastructure provisioning. The runner keeps testing the selected
+digest and does not replace an incompatible image automatically.
+
 Repository variables `APD_TEST_PROFILE` (`baseline-smoke`, `cloud-smoke`, or
 `network-smoke`), `APD_TEST_REGION` (`us-east-2` or `us-west-2`), and `APD_ACCESS_CIDR`
 control the run. Defaults are baseline smoke, us-east-2, and the APD management
@@ -68,8 +88,9 @@ Containerlab hypervisor with four virtual network devices; it can take hours.
 
 ## What actually runs
 
-1. Acquire a Controller-side integration lease. An existing lease blocks another
-   run until its resources are reconciled, including runs from another entry point.
+1. Acquire a Controller-side integration lease. A prior completed run that stopped
+   before provisioning can be reconciled automatically using its verified GitHub
+   artifacts. Other existing leases block the run until manually reconciled.
 2. Capture the source project/EE/binding configuration. Set **Product Demos EE** to
    the candidate digest with pull policy `always`. Point **Ansible Product Demos**
    at this fork and exact commit; sync and verify the revision.
@@ -117,6 +138,9 @@ rollback of all category setup changes.
 - EE evidence verifies the immutable image configured on the job's EE record.
   Actual Kubernetes pod digest evidence is explicitly unavailable through this
   Controller-only preview; it is not claimed as independently observed.
+- The runner waits for terminal-job event ingestion and recovers runtime metadata
+  from structured `set_stats` or probe-command events when `job.artifacts` is empty.
+  Failed collections, Python packages and tools appear in the report and log summary.
 - JSON/JUnit/HTML contain only selected metadata and normalized failure categories.
   Raw stdout, exception bodies, credential inputs and environment dumps are not
   uploaded. Inspect job IDs in Controller when detailed debugging is needed.
@@ -129,6 +153,18 @@ The runner checkpoints reports and `ledger.json` while it works. On a normal
 failure or timeout it cancels active jobs before deleting resources. It refuses
 cleanup if ownership cannot be verified or jobs cannot be stopped. A cleanup or
 configuration restoration failure retains the integration lease and fails the run.
+
+Controller inventory deletion returns an empty HTTP 202 while removal is queued.
+The client accepts that response and polls until the resource is absent before
+releasing the lease. The original preview incorrectly treated this as a JSON error.
+
+On retry, automatic recovery is limited to a completed integration workflow in the
+same repository with matching commit/run/owner evidence, explicit false provisioning
+flags, no active jobs, and a verified prior configuration restore. It validates
+the entire resource list and current object ownership before deleting only those
+temporary inventories/templates and the stale lease. It never deletes AWS resources
+or repairs unknown configuration during this recovery. Read access to Actions
+artifacts is supplied by the live job's read-only `GH_TOKEN`.
 
 Runner loss or forced cancellation cannot guarantee cleanup. Inspect the ledger,
 the Controller job IDs and the lease's run owner before manually cleaning the

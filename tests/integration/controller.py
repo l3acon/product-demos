@@ -1,6 +1,7 @@
 """Small Controller client with bounded requests and no response-body logging."""
 
 from urllib.parse import urljoin, urlparse
+import time
 
 import requests
 
@@ -10,7 +11,16 @@ class ControllerError(RuntimeError):
 
 
 class Controller:
-    def __init__(self, base, username=None, password=None, token=None, session=None):
+    def __init__(
+        self,
+        base,
+        username=None,
+        password=None,
+        token=None,
+        session=None,
+        clock=time.monotonic,
+        sleep=time.sleep,
+    ):
         parsed = urlparse(base)
         if (
             parsed.scheme != "https"
@@ -27,6 +37,7 @@ class Controller:
             )
         self.base = base.rstrip("/")
         self.session = session or requests.Session()
+        self.clock, self.sleep = clock, sleep
         self.session.trust_env = False
         if token:
             self.session.headers["Authorization"] = "Bearer " + token
@@ -54,7 +65,8 @@ class Controller:
             raise ControllerError(
                 f"Controller API {method} returned HTTP {response.status_code}"
             )
-        if response.status_code == 204:
+        # Inventory deletion is asynchronous: Controller returns an empty 202.
+        if method == "DELETE" or response.status_code == 204:
             return {}
         try:
             return response.json()
@@ -83,8 +95,18 @@ class Controller:
     def patch(self, path, data):
         return self.request("PATCH", path, data)
 
-    def delete(self, path):
-        return self.request("DELETE", path, missing_ok=True)
+    def delete(self, path, timeout=120):
+        accepted = self.request("DELETE", path, missing_ok=True)
+        if accepted is None:
+            return None
+        deadline = self.clock() + timeout
+        while self.clock() < deadline:
+            if self.get(path, missing_ok=True) is None:
+                return {}
+            self.sleep(2)
+        raise ControllerError(
+            "Controller resource deletion did not complete before timeout"
+        )
 
     def list(self, path):
         rows = []
