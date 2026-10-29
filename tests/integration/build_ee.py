@@ -19,6 +19,7 @@ import yaml
 
 from report import render
 from resolve_image import resolve
+from galaxy_cli import token_kind
 
 
 TOKENS = (
@@ -81,6 +82,7 @@ def check_hub_tokens(tokens, report):
                     "ANSIBLE_GALAXY_SERVER_", "Automation Hub "
                 ).replace("_TOKEN", " authentication"),
                 "status": "passed",
+                "summary": "Supplied token type: " + token_kind(token),
             }
         )
         server = "certified" if "CERTIFIED" in name else "validated"

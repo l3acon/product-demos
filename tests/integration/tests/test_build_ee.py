@@ -1,6 +1,7 @@
 """Test image provenance and the boundaries between build secrets and APD access."""
 
 import argparse
+import base64
 from contextlib import redirect_stdout
 import io
 import json
@@ -21,7 +22,7 @@ from build_ee import (
     secure_galaxy_steps,
     validate_metadata,
 )
-from galaxy_cli import instrument
+from galaxy_cli import instrument, token_kind
 
 
 CONTAINERFILE = "\n".join(
@@ -35,6 +36,22 @@ CONTAINERFILE = "\n".join(
 
 
 class BuildTests(unittest.TestCase):
+    def test_token_metadata_reports_only_known_type_labels(self):
+        for kind in ("Offline", "Refresh", "Bearer", "DO-NOT-PUBLISH"):
+            payload = (
+                base64.urlsafe_b64encode(
+                    json.dumps({"typ": kind, "sub": "DO-NOT-PUBLISH"}).encode()
+                )
+                .decode()
+                .rstrip("=")
+            )
+            observed = token_kind("header." + payload + ".signature")
+            self.assertEqual(
+                observed, "unclassified" if kind == "DO-NOT-PUBLISH" else kind
+            )
+        self.assertEqual(token_kind(None), "missing")
+        self.assertEqual(token_kind("invalid"), "unclassified")
+
     def test_galaxy_error_trace_omits_query_and_body_but_preserves_client_error(self):
         url = "https://sso.redhat.com/auth/token?secret=DO-NOT-PUBLISH"
         body = json.dumps(
