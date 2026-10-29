@@ -205,7 +205,6 @@ jobs:
             integration-results/live/junit.xml
             integration-results/live/summary.md
             integration-results/live/ledger.json
-            integration-results/ee-build/build-metadata.json
           retention-days: 14
           if-no-files-found: warn
 ...
