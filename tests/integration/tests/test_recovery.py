@@ -164,6 +164,18 @@ class RecoveryTests(unittest.TestCase):
             self.recover()
         self.assert_no_deletes()
 
+    def test_prior_registry_credential_is_removed_after_verified_restore(self):
+        credential = self.api.add(
+            "credentials",
+            {"name": self.owner + " / image pull", "organization": self.api.org},
+        )
+        self.ledger["created"].insert(
+            1,
+            {"kind": "credentials", "id": credential["id"], "name": credential["name"]},
+        )
+        self.recover()
+        self.assertIsNone(self.api.get(credential["url"], missing_ok=True))
+
     def test_unverified_configuration_restore_retains_the_lease(self):
         self.report["cleanup"][0]["status"] = "failed"
         with self.assertRaises(ControllerError):

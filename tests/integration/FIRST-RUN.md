@@ -32,15 +32,16 @@ Secrets settings. Do this before approving the waiting job.
 An optional `APD_TOKEN` environment secret replaces password authentication.
 Remove stale token secrets when switching back to username/password: the token
 takes precedence. Credentials are only made available to the live runner step
-after environment approval. The preparation job never accesses APD.
+after environment approval. The preparation and EE build jobs never access APD.
 
 ## Review, then approve
 
-1. Push this branch to the fork. Preparation tests run automatically.
+1. Push this branch to the fork. Preparation tests and the EE build run automatically.
 2. Open the Actions run named **APD integration preview**.
 3. Inspect its summary for the exact project commit, image digest, profile and
-   region. Download **apd-sample-report** and open `report.html` to inspect the
-   report format before any live test. Every sample is labeled as sample data.
+   region. Download **apd-ee-build-<run>-<attempt>** for the actual build/runtime
+   report and source provenance. **apd-sample-report** previews the integration
+   report format with explicitly labeled sample data.
 4. Configure the fresh instance secrets, then select **Review deployments** and
    approve **apd-integration** when you are ready to provision infrastructure.
 5. After completion, download **apd-live-report-<run>-<attempt>** and open
@@ -53,12 +54,52 @@ to your fork's main. Re-run the workflow from its existing run page to repeat th
 same candidate commit; a new branch push tests the new commit. If this workflow is
 later placed on main, its Run workflow form becomes available too.
 
-The initial candidate is the immutable image digest for
-`quay.io/ansible-product-demos/apd-ee-27:20261028` observed during job 25 diagnosis.
-Set the repository variable `APD_EE_IMAGE` to select another accessible image before
-starting a new run. Preparation resolves tags to digests once, before approval.
-The default public image does not need registry credentials in GitHub. Private
-image resolution/build credentials are not implemented in this first preview.
+## Build the candidate EE
+
+By default CI builds `execution_environments/apd-ee-27.yml` and
+`requirements-27.yml` from the same commit as the APD project. This first build
+lane targets **AAP 2.7 on linux/amd64**; other AAP versions require an explicit
+externally built image. It runs before APD approval and has no APD credentials.
+Build secrets are available only on this fork's trusted branch push/manual path;
+there is no privileged pull-request trigger.
+
+Configure these repository secrets once:
+
+| Secret | Purpose |
+| --- | --- |
+| `REDHAT_REGISTRY_USERNAME` | Red Hat registry account or service account |
+| `REDHAT_REGISTRY_PASSWORD` | Pull the definition's base image |
+| `ANSIBLE_GALAXY_SERVER_CERTIFIED_TOKEN` | Download certified collections |
+| `ANSIBLE_GALAXY_SERVER_VALIDATED_TOKEN` | Download validated collections |
+
+CI resolves the base tag to a digest and builds with that digest. Hub tokens use
+required Podman secret mounts in the two Galaxy install commands, rather than
+build arguments. Temporary auth/token files live outside the build context and
+are removed after the step. Generated build contexts and raw logs are not uploaded.
+
+The built image must pass the same runtime compatibility probe locally before
+publishing. Failure produces an HTML/JSON/JUnit build report and blocks APD access.
+A passing image is published to
+`ghcr.io/l3acon/product-demos/apd-ee-27:ci-<commit>-<run>-<attempt>` using the
+workflow's `GITHUB_TOKEN`; no registry push secret or public package setting is
+required. The protected APD job receives only the resulting digest.
+
+For private GHCR pulls, the live job creates a run-owned Controller Container
+Registry credential using its own temporary `GITHUB_TOKEN` with `packages: read`.
+It attaches that credential to Product Demos EE, reapplies the binding after setup,
+restores the previous binding and deletes the temporary credential during cleanup.
+The token expires with the live job and is never included in reports or the ledger.
+
+`build-metadata.json` records the source commit, image/base digests, definition,
+requirements/config/Containerfile checksums, builder version, RPM URL and platform.
+The live runner validates that this evidence matches its selected commit and image,
+includes it in the final report, and repeats runtime validation inside APD.
+
+To reproduce a previously published public EE instead, set the repository variable
+`APD_EE_IMAGE` (or the `ee_image` dispatch input). This explicitly skips building,
+resolves the image to a digest and labels the evidence as externally built. Remove
+the variable to return to source builds. External-image overrides do not claim
+source build provenance or automatically configure private registry credentials.
 
 ### Initial image finding
 
@@ -76,9 +117,9 @@ of the same pinned digest reproduced these findings on October 29, 2026:
 | juniper.device | Absent | Source requires 2.0.1 |
 | passlib | Absent | EE definition requires >=1.7.4 |
 
-The image needs rebuilding from the current requirements before this profile can
-proceed to infrastructure provisioning. The runner keeps testing the selected
-digest and does not replace an incompatible image automatically.
+This finding motivated the default source build stage. An explicit override of
+that old digest still fails compatibility validation; the runner does not bypass
+the check or silently substitute another image.
 
 Repository variables `APD_TEST_PROFILE` (`baseline-smoke`, `cloud-smoke`, or
 `network-smoke`), `APD_TEST_REGION` (`us-east-2` or `us-west-2`), and `APD_ACCESS_CIDR`
@@ -162,7 +203,7 @@ On retry, automatic recovery is limited to a completed integration workflow in t
 same repository with matching commit/run/owner evidence, explicit false provisioning
 flags, no active jobs, and a verified prior configuration restore. It validates
 the entire resource list and current object ownership before deleting only those
-temporary inventories/templates and the stale lease. It never deletes AWS resources
+temporary inventories/templates/registry credentials and the stale lease. It never deletes AWS resources
 or repairs unknown configuration during this recovery. Read access to Actions
 artifacts is supplied by the live job's read-only `GH_TOKEN`.
 
@@ -182,6 +223,6 @@ python -m unittest discover -s tests/integration/tests -v
 python tests/integration/report.py --sample --output integration-results/sample
 ```
 
-The tests use an in-memory Controller. No credentials or live infrastructure are
-used. A local live run uses the same `run.py` CLI as Actions and requires APD
+The tests use an in-memory Controller and simulated build commands. No credentials
+or live infrastructure are used. A local live run uses the same `run.py` CLI as Actions and requires APD
 credentials in environment variables plus an immutable image digest and commit SHA.

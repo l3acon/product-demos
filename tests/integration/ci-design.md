@@ -6,7 +6,7 @@ and consume its structured report rather than inventing execution order at runti
 
 The initial baseline smoke implementation is described in [FIRST-RUN.md](FIRST-RUN.md).
 The broader architecture below also includes later work such as full-catalog cases,
-lost-runner recovery, EE builds, Pages publishing, and a bot interface.
+lost-runner recovery, multiple AAP/architecture build lanes, Pages publishing, and a bot interface.
 
 ## Operator experience
 
@@ -40,10 +40,10 @@ credential completion. Profiles let core validation proceed without those lanes.
 ```mermaid
 flowchart TD
   request[PR or manual test request] --> plan[Validate graph and exact test revision]
-  plan --> approve[Approved integration environment]
+  plan --> build[Build / publish candidate EE and resolve digest]
+  build --> approve[Approved integration environment]
   approve --> discover[Discover APD version, architecture and prerequisites]
-  discover --> build[Build / publish candidate EE and resolve digest]
-  build --> bind[Bind candidate image and verify EE selection]
+  discover --> bind[Bind candidate image and verify EE selection]
   bind --> suite[Execute graph and observe workflow children]
   suite -. terminal .-> collect[Collect results and run finalizers]
   collect --> evidence[JSON / JUnit / sanitized HTML and Actions summary]

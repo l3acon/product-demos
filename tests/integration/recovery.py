@@ -112,7 +112,7 @@ def reconcile_preprovisioning(api, lease, ledger, report, organization, project)
     if any(
         row.get("status") == "failed"
         and row.get("resource")
-        not in ("inventories", "job_templates", "integration lease")
+        not in ("inventories", "job_templates", "credentials", "integration lease")
         for row in cleanup
     ):
         raise ControllerError(
@@ -130,7 +130,7 @@ def reconcile_preprovisioning(api, lease, ledger, report, organization, project)
     for resource in ledger.get("created", []):
         kind = resource.get("kind")
         if (
-            kind not in ("inventories", "job_templates")
+            kind not in ("inventories", "job_templates", "credentials")
             or type(resource.get("id")) is not int
         ):
             raise ControllerError("Prior ledger contains an unsupported resource")

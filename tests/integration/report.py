@@ -69,6 +69,13 @@ def render(report, directory):
         for name, status in sorted(coverage.items())
     )
     runtime = escape(json.dumps(report.get("runtime", {}), indent=2))
+    build = (
+        "<h2>EE build provenance</h2><pre>"
+        + escape(json.dumps(report["ee_build"], indent=2))
+        + "</pre>"
+        if report.get("ee_build")
+        else ""
+    )
     diagnostics = report.get("runtime", {})
     failed_checks = [
         (
@@ -118,7 +125,7 @@ pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#eaf0f5;padding:16px
 </style><main><h1>{title}</h1><p>{escape(summary)}</p>
 <p class="note">{escape(report.get('scope', ''))}</p><dl>{items}</dl>
 <h2>Executions and assertions</h2><table><thead><tr><th>Case</th><th>Status</th><th>Job ID</th><th>EE evidence</th><th>Hosts</th><th>Result</th></tr></thead><tbody>{body}</tbody></table>
-{runtime_failures}<h2>Candidate runtime</h2><pre>{runtime}</pre>
+{build}{runtime_failures}<h2>Candidate runtime</h2><pre>{runtime}</pre>
 <h2>Full catalog coverage</h2><p>Only reached APD template executions count. Diagnostic jobs are listed separately above.</p>
 <table><thead><tr><th>Template</th><th>Coverage</th></tr></thead><tbody>{coverage_rows}</tbody></table>
 <h2>Cleanup</h2><pre>{escape(json.dumps(report.get('cleanup', []), indent=2))}</pre>

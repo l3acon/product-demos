@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -43,6 +43,7 @@ class FakeController:
                 "image": "quay.io/example/original:latest",
                 "pull": "missing",
                 "organization": None,
+                "credential": None,
             },
         )
         self.ee = self.collection("execution_environments")[0]["id"]
@@ -206,7 +207,9 @@ class FakeController:
         if path.endswith("cancel/"):
             self.objects[path[:-7]]["status"] = "canceled"
             return {}
-        if path.endswith("credentials/") or path.endswith("hosts/"):
+        if (
+            path.endswith("credentials/") and path != "/api/controller/v2/credentials/"
+        ) or path.endswith("hosts/"):
             return {}
         if path.endswith("update/"):
             source = self.get(path[:-7])
@@ -440,6 +443,68 @@ class RunnerTests(unittest.TestCase):
                 for row in self.api.collection("inventories")
             )
         )
+
+    def test_private_image_uses_temporary_registry_credential_and_restores_binding(
+        self,
+    ):
+        self.api.add("credential_types", {"name": "Container Registry"})
+        self.args.image = "ghcr.io/l3acon/product-demos/apd-ee-27@sha256:" + "a" * 64
+        registry = {
+            "APD_REGISTRY_HOST": "ghcr.io",
+            "APD_REGISTRY_USERNAME": "l3acon",
+            "APD_REGISTRY_PASSWORD": "DO-NOT-REPORT",
+        }
+        with patch.dict("os.environ", registry):
+            runner = self.runner()
+            runner.configure()
+            temporary = runner.registry_credential
+            self.assertEqual(
+                self.api.get(runner.ee["url"])["credential"], temporary["id"]
+            )
+            # Setup can reset image fields; each launch restores the candidate binding.
+            self.api.patch(runner.ee["url"], {"credential": None})
+            runner.bind()
+            self.assertEqual(
+                self.api.get(runner.ee["url"])["credential"], temporary["id"]
+            )
+            runner.finalizers()
+        self.assertIsNone(self.api.get(runner.ee["url"])["credential"])
+        self.assertIsNone(self.api.get(temporary["url"], missing_ok=True))
+        for name in ("report.json", "ledger.json", "report.html"):
+            self.assertNotIn("DO-NOT-REPORT", (self.args.output / name).read_text())
+
+    def test_registry_credential_is_retained_when_original_binding_cannot_be_restored(
+        self,
+    ):
+        self.api.add("credential_types", {"name": "Container Registry"})
+        self.args.image = "ghcr.io/l3acon/product-demos/apd-ee-27@sha256:" + "a" * 64
+        with patch.dict(
+            "os.environ",
+            {
+                "APD_REGISTRY_HOST": "ghcr.io",
+                "APD_REGISTRY_USERNAME": "l3acon",
+                "APD_REGISTRY_PASSWORD": "DO-NOT-REPORT",
+            },
+        ):
+            runner = self.runner()
+            runner.configure()
+        original = self.api.patch
+
+        def fail_restore(path, data):
+            if path == runner.ee["url"] and data.get("credential") is None:
+                raise ControllerError("restore failed")
+            return original(path, data)
+
+        self.api.patch = fail_restore
+        runner.finalizers()
+        self.assertIsNotNone(self.api.get(runner.registry_credential["url"]))
+        self.assertTrue(
+            any(
+                row["resource"] == "credentials" and row["status"] == "failed"
+                for row in runner.report["cleanup"]
+            )
+        )
+        self.assertIsNotNone(self.api.get(runner.lease["url"]))
 
     def test_nonempty_baseline_never_provisions_or_destroys_existing_resources(self):
         self.api.baseline_ok = False

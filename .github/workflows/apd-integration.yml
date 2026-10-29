@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       ee_image:
-        description: Published candidate EE image tag or digest (resolved before approval)
+        description: Optional public image override; leave empty to build the source EE
         type: string
         required: false
       profile:
@@ -24,17 +24,11 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: apd-integration-preview
-  cancel-in-progress: false
-
 jobs:
   prepare:
     name: Validate runner and preview report
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    outputs:
-      image: ${{ steps.image.outputs.image }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
@@ -54,13 +48,59 @@ jobs:
           name: apd-sample-report
           path: integration-results/sample/
           retention-days: 14
-      - name: Install registry inspection tool
-        run: sudo apt-get update -qq && sudo apt-get install -y skopeo
-      - name: Resolve the candidate image to an immutable digest
+
+  candidate:
+    name: Build and validate candidate EE
+    if: github.repository == 'l3acon/product-demos'
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      built: ${{ steps.image.outputs.built }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+      - name: Install EE build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y podman skopeo
+          python -m pip install -r tests/integration/requirements.txt -r tests/integration/build-requirements.txt
+      - name: Build, check and publish the source EE or resolve an explicit override
         id: image
         env:
-          CANDIDATE_IMAGE: ${{ inputs.ee_image || vars.APD_EE_IMAGE || 'quay.io/ansible-product-demos/apd-ee-27@sha256:68c102b10a7b277c9877bcc5d63d23011f676215a91eeed64cf9c793dbb226ee' }}
-        run: python tests/integration/resolve_image.py "$CANDIDATE_IMAGE"
+          GH_TOKEN: ${{ github.token }}
+          REDHAT_REGISTRY_USERNAME: ${{ secrets.REDHAT_REGISTRY_USERNAME }}
+          REDHAT_REGISTRY_PASSWORD: ${{ secrets.REDHAT_REGISTRY_PASSWORD }}
+          ANSIBLE_GALAXY_SERVER_CERTIFIED_TOKEN: ${{ secrets.ANSIBLE_GALAXY_SERVER_CERTIFIED_TOKEN }}
+          ANSIBLE_GALAXY_SERVER_VALIDATED_TOKEN: ${{ secrets.ANSIBLE_GALAXY_SERVER_VALIDATED_TOKEN }}
+          EXTERNAL_IMAGE: ${{ inputs.ee_image || vars.APD_EE_IMAGE }}
+        run: |
+          python tests/integration/build_ee.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --revision "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --external-image "$EXTERNAL_IMAGE"
+      - name: Add EE build results to the Actions summary
+        if: always()
+        run: |
+          if test -f integration-results/ee-build/summary.md; then
+            cat integration-results/ee-build/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload sanitized EE build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: apd-ee-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: integration-results/ee-build/
+          retention-days: 14
       - name: Show the exact run awaiting approval
         env:
           CANDIDATE_IMAGE: ${{ steps.image.outputs.image }}
@@ -75,6 +115,9 @@ jobs:
           Candidate project: `{os.environ['GITHUB_REPOSITORY']}` at `{os.environ['GITHUB_SHA']}`
 
           Candidate EE: `{os.environ['CANDIDATE_IMAGE']}`
+
+          Review **apd-ee-build** for the build report, base digest, source checksums and local runtime probe before approving.
+          Source builds target AAP 2.7 on linux/amd64. APD runtime validation runs again after approval.
 
           Profile: `{os.environ['TEST_PROFILE']}`; AWS region: `{os.environ['TEST_REGION']}`
 
@@ -93,13 +136,17 @@ jobs:
   integration:
     name: Approved fresh APD smoke test
     if: github.repository == 'l3acon/product-demos'
-    needs: prepare
+    needs: candidate
     environment: apd-integration
+    concurrency:
+      group: apd-integration-preview
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 350
     permissions:
       contents: read
       actions: read
+      packages: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
@@ -107,6 +154,13 @@ jobs:
           python-version: '3.12'
       - name: Install runner dependencies
         run: python -m pip install -r tests/integration/requirements.txt
+      - name: Download the candidate build provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "apd-ee-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --dir integration-results/ee-build
       - name: Configure baseline, provision fixtures, test and finalize
         env:
           APD_URL: ${{ secrets.APD_URL }}
@@ -114,7 +168,10 @@ jobs:
           APD_PASSWORD: ${{ secrets.APD_PASSWORD }}
           APD_TOKEN: ${{ secrets.APD_TOKEN }}
           GH_TOKEN: ${{ github.token }}
-          CANDIDATE_IMAGE: ${{ needs.prepare.outputs.image }}
+          APD_REGISTRY_HOST: ${{ needs.candidate.outputs.built == 'true' && 'ghcr.io' || '' }}
+          APD_REGISTRY_USERNAME: ${{ needs.candidate.outputs.built == 'true' && github.actor || '' }}
+          APD_REGISTRY_PASSWORD: ${{ needs.candidate.outputs.built == 'true' && github.token || '' }}
+          CANDIDATE_IMAGE: ${{ needs.candidate.outputs.image }}
           TEST_PROFILE: ${{ inputs.profile || vars.APD_TEST_PROFILE || 'baseline-smoke' }}
           TEST_REGION: ${{ inputs.region || vars.APD_TEST_REGION || 'us-east-2' }}
           TEST_ACCESS_CIDR: ${{ vars.APD_ACCESS_CIDR || '0.0.0.0/0' }}
@@ -123,6 +180,7 @@ jobs:
             --repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --revision "$GITHUB_SHA" \
             --image "$CANDIDATE_IMAGE" \
+            --build-metadata integration-results/ee-build/build-metadata.json \
             --profile "$TEST_PROFILE" \
             --region "$TEST_REGION" \
             --access-cidr "$TEST_ACCESS_CIDR" \
@@ -147,6 +205,7 @@ jobs:
             integration-results/live/junit.xml
             integration-results/live/summary.md
             integration-results/live/ledger.json
+            integration-results/ee-build/build-metadata.json
           retention-days: 14
           if-no-files-found: warn
 ...

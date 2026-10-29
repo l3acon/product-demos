@@ -16,6 +16,7 @@ import time
 import uuid
 
 from build_graph import build, load
+from build_ee import BuildError, validate_metadata
 from controller import Controller, ControllerError
 from report import render
 from recovery import previous_evidence, reconcile_preprovisioning
@@ -183,6 +184,7 @@ class Runner:
         self.baseline_passed = False
         self.key_ids = []
         self.lease = None
+        self.registry_credential = None
         self.probe_template = None
         self.guard_template = None
         self.bucket_template = None
@@ -207,6 +209,10 @@ class Runner:
                 entry["name"]: "not_selected" for entry in self.graph["templates"]
             },
         }
+        if getattr(args, "build_metadata", None):
+            self.report["ee_build"] = validate_metadata(
+                args.build_metadata, args.revision, args.image
+            )
         self.checkpoint()
 
     def checkpoint(self):
@@ -355,7 +361,38 @@ class Runner:
             },
         )
         self.ee = self.api.unique("execution_environments", "Product Demos EE")
-        self.patch(self.ee["url"], {"image": self.args.image, "pull": "always"})
+        selected = {"image": self.args.image, "pull": "always"}
+        registry = [
+            os.environ.get("APD_REGISTRY_" + key, "")
+            for key in ("HOST", "USERNAME", "PASSWORD")
+        ]
+        if any(registry):
+            host, username, password = registry
+            if (
+                not all(registry)
+                or host != "ghcr.io"
+                or not self.args.image.startswith(host + "/")
+            ):
+                raise ControllerError(
+                    "Registry authentication requires a matching GHCR image and all registry fields"
+                )
+            credential_type = self.api.unique("credential_types", "Container Registry")
+            self.registry_credential = self.create(
+                "credentials",
+                {
+                    "name": self.owner + " / image pull",
+                    "organization": self.org,
+                    "credential_type": credential_type["id"],
+                    "inputs": {
+                        "host": host,
+                        "username": username,
+                        "password": password,
+                        "verify_ssl": True,
+                    },
+                },
+            )
+            selected["credential"] = self.registry_credential["id"]
+        self.patch(self.ee["url"], selected)
         self.ee = self.api.get(self.ee["url"])
         self.patch(
             self.project["url"],
@@ -391,6 +428,13 @@ class Runner:
                 "Only AAP 2.5, 2.6 and 2.7 are supported by this preview"
             )
         self.series = version[1] + version[2]
+        if (
+            self.report.get("ee_build", {}).get("mode") == "built"
+            and self.series != self.report["ee_build"]["aap_series"]
+        ):
+            raise ControllerError(
+                "The built EE targets AAP 2.7; the supplied APD version differs"
+            )
         self.report["metadata"]["aap_series"] = self.series
         self.local_inventory = self.create(
             "inventories",
@@ -436,7 +480,10 @@ class Runner:
                 and row.get("execution_environment") != self.ee["id"]
             ):
                 self.patch(row["url"], {"execution_environment": self.ee["id"]})
-        self.api.patch(self.ee["url"], {"image": self.args.image, "pull": "always"})
+        selected = {"image": self.args.image, "pull": "always"}
+        if self.registry_credential:
+            selected["credential"] = self.registry_credential["id"]
+        self.api.patch(self.ee["url"], selected)
 
     def record_job(self, job, name=None, kind="job_template", require_hosts=False):
         if job["url"] in self.recorded_jobs:
@@ -979,6 +1026,15 @@ class Runner:
                 and resource["name"] == "APD integration lease"
             ):
                 continue
+            if resource["kind"] == "credentials" and not restored:
+                self.report["cleanup"].append(
+                    {
+                        "resource": "credentials",
+                        "status": "failed",
+                        "summary": "Registry credential retained because Controller bindings could not be restored.",
+                    }
+                )
+                continue
             try:
                 self.api.delete(
                     f"/api/controller/v2/{resource['kind']}/{resource['id']}/"
@@ -1095,6 +1151,7 @@ def main():
     )
     parser.add_argument("--access-cidr", default="0.0.0.0/0")
     parser.add_argument("--run-id", default="local")
+    parser.add_argument("--build-metadata", type=Path)
     parser.add_argument("--output", type=Path, default=Path("integration-results/live"))
     parser.add_argument("--timeout", type=int, default=14400)
     parser.add_argument("--poll-interval", type=float, default=10)
@@ -1124,11 +1181,13 @@ def main():
             base, os.environ.get("APD_USERNAME"), os.environ.get("APD_PASSWORD"), token
         )
         return Runner(client, args).run()
-    except (KeyError, ControllerError) as error:
+    except (KeyError, ControllerError, BuildError, ValueError, OSError) as error:
         message = (
             "Required APD environment secrets are missing."
             if isinstance(error, KeyError)
             else str(error)
+            if isinstance(error, (ControllerError, BuildError))
+            else "EE build metadata could not be validated."
         )
         render(
             {
