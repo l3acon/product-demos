@@ -96,6 +96,7 @@ def reconcile_preprovisioning(api, lease, ledger, report, organization, project)
             for key in ("cloud_started", "network_started", "baseline_passed")
         )
         or ledger.get("active") != []
+        or bool(ledger.get("pending_cleanup"))
     ):
         raise ControllerError(
             "Prior run may have provisioned infrastructure; automatic lease recovery refused"

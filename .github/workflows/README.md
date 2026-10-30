@@ -75,3 +75,12 @@ the completed test report, then requires **quay-publish** approval before copyin
 the tested digest to Quay. Configure Quay credentials in that protected environment.
 See [first-run setup and publication](../../tests/integration/FIRST-RUN.md) for the
 source/destination checks, test-result review and tag policy.
+
+The integration preview defaults to the `catalog` profile. Fixture guard diagnostics
+are disabled while underlying template execution is being developed. Native
+deployment and teardown templates run directly; the report marks the guard
+disabled and does not claim independently verified AWS absence or ownership.
+Every non-OpenShift source template is accounted for as executed or explicitly
+blocked, with scenario dependencies and Controller log links. Independent jobs
+continue after failures. Missing external fixtures remain blocked and make catalog
+acceptance incomplete. Smoke profiles remain available via `APD_TEST_PROFILE`.

@@ -52,7 +52,10 @@ def verified_plan(repository, run_id, attempt, run, jobs, report, quay_repositor
             "Only this repository's integration workflow may supply a tested image"
         )
     test_jobs = [
-        row for row in jobs if row.get("name") == "Approved fresh APD smoke test"
+        row
+        for row in jobs
+        if row.get("name")
+        in ("Approved fresh APD smoke test", "Approved APD template integration test")
     ]
     if (
         len(test_jobs) != 1

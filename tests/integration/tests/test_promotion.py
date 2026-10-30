@@ -88,6 +88,10 @@ class PromotionTests(unittest.TestCase):
         )
         self.assertNotIn(":latest", result["destination_image"])
 
+    def test_catalog_job_name_is_supported_alongside_previous_smoke_reports(self):
+        self.jobs[0]["name"] = "Approved APD template integration test"
+        self.assertEqual(self.plan()["source_image"], self.image)
+
     def test_sample_external_wrong_revision_and_wrong_image_are_refused(self):
         original = copy.deepcopy(self.report)
         for mutation in (

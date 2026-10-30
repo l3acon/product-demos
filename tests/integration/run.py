@@ -1,4 +1,4 @@
-"""Configure a disposable APD instance and execute an approved baseline smoke run."""
+"""Configure a disposable APD instance and execute approved template integration tests."""
 
 import argparse
 from datetime import datetime, timezone
@@ -17,6 +17,7 @@ import uuid
 
 from build_graph import build, load
 from build_ee import BuildError, validate_metadata
+from catalog import Catalog
 from controller import Controller, ControllerError
 from diagnostics import public_events
 from report import render
@@ -209,6 +210,8 @@ class Runner:
         self.cloud_started = False
         self.network_started = False
         self.baseline_passed = False
+        self.fixture_guard = getattr(args, "fixture_guard", False)
+        self.pending_cleanup = {}
         self.key_ids = []
         self.lease = None
         self.registry_credential = None
@@ -219,7 +222,11 @@ class Runner:
         self.report = {
             "schema_version": 1,
             "sample": False,
-            "scope": "Baseline smoke profile: runtime validation, category setup, fresh AWS cloud stack and/or fresh Containerlab, representative APD jobs, and cleanup. Other catalog cases remain not_selected; this is not full-catalog acceptance.",
+            "scope": (
+                "Catalog execution in README dependency order. Every non-OpenShift template is accounted for; missing fixtures and unsupported integrations are blocked explicitly. Template execution results do not imply all planned functional assertions were implemented."
+                if args.profile == "catalog"
+                else "Smoke profile: runtime validation, category setup, AWS cloud and/or Containerlab, representative jobs, and cleanup. This is not full-catalog acceptance."
+            ),
             "metadata": {
                 "run_id": args.run_id,
                 "resource_owner": self.owner,
@@ -227,6 +234,7 @@ class Runner:
                 "candidate_commit": args.revision,
                 "candidate_image": args.image,
                 "repository": args.repository,
+                "fixture_guard": "enabled" if self.fixture_guard else "disabled",
                 "started": now(),
                 "runtime_digest": "configured immutable digest checked; actual pod image evidence unavailable",
             },
@@ -285,6 +293,8 @@ class Runner:
             "cloud_started": self.cloud_started,
             "network_started": self.network_started,
             "baseline_passed": self.baseline_passed,
+            "fixture_guard": self.fixture_guard,
+            "pending_cleanup": list(self.pending_cleanup),
             "created": self.created,
             "active": sorted(self.active),
             "snapshot_fields": [
@@ -721,6 +731,9 @@ class Runner:
                     "aws-rhel10",
                     "reports",
                     "clab-hypervisor",
+                    "dc01",
+                    "winston",
+                    "winthrop",
                 }
                 allowed_hosts.update(
                     load(
@@ -840,7 +853,12 @@ class Runner:
                 if child.get("type") == "job"
                 else child.get("type", "supporting_update")
             )
-            passed = self.record_job(child, target, kind) and passed
+            passed = (
+                self.record_job(
+                    child, target, kind, require_hosts=child.get("type") == "job"
+                )
+                and passed
+            )
             if child.get("type") == "workflow_job":
                 passed = self.workflow_children(child) and passed
         return passed
@@ -860,6 +878,8 @@ class Runner:
         self.bind()
         template = template or self.template(name, workflow)
         variables = variables or {}
+        if variables and not template.get("ask_variables_on_launch"):
+            self.patch(template["url"], {"ask_variables_on_launch": True})
         if template.get("survey_enabled"):
             survey = self.api.get(template["url"] + "survey_spec/").get("spec", [])
             for question in survey:
@@ -868,7 +888,13 @@ class Runner:
                     variables[key] = question["default"]
                 if question.get("required") and variables.get(key) in (None, "", []):
                     raise ControllerError(
-                        "Required survey input is missing for " + name
+                        "Required survey input is missing for "
+                        + name
+                        + (
+                            ": " + key
+                            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,80}", key)
+                            else ""
+                        )
                     )
         launch = self.api.post(template["url"] + "launch/", {"extra_vars": variables})
         path = launch.get("url")
@@ -897,7 +923,32 @@ class Runner:
         passed = self.record_job(result, name, kind, require_hosts)
         if workflow:
             passed = self.workflow_children(result) and passed
+            if not passed:
+                for row in self.report["cases"]:
+                    if row.get("job_id") == result["id"]:
+                        row["status"] = "failed"
+                        row[
+                            "summary"
+                        ] = "Workflow execution or one of its child jobs failed; inspect the child results."
+                if name in self.report["coverage"]:
+                    self.report["coverage"][name] = "failed"
+                self.checkpoint()
         return passed, result
+
+    def cleanup_template(self, key):
+        name, bindings = self.pending_cleanup[key]
+        try:
+            ok, _ = self.launch(name, dict(bindings), timeout=1800)
+        except ControllerError as error:
+            self.case(name, "failed", summary=str(error))
+            ok = False
+        self.report["cleanup"].append(
+            {"resource": key, "status": "passed" if ok else "failed"}
+        )
+        if ok:
+            del self.pending_cleanup[key]
+        self.checkpoint()
+        return ok
 
     def refresh_callback(self):
         callback = self.api.unique("credentials", "AAP Credential", self.org)
@@ -943,9 +994,12 @@ class Runner:
             raise ControllerError("Category setup failed")
         self.bind()
         aws = self.api.unique("credentials", "AWS", self.org)["id"]
-        self.guard_template = self.diagnostic_template(
-            "fixture guard", "tests/integration/fixture_guard.yml", credentials=[aws]
-        )
+        if self.fixture_guard:
+            self.guard_template = self.diagnostic_template(
+                "fixture guard",
+                "tests/integration/fixture_guard.yml",
+                credentials=[aws],
+            )
         self.bucket_template = self.diagnostic_template(
             "bucket cleanup", "tests/integration/cleanup_bucket.yml", credentials=[aws]
         )
@@ -1037,7 +1091,7 @@ class Runner:
         result = self.wait(update["url"], 900)
         return self.record_job(result, name, "inventory_update")
 
-    def cloud(self):
+    def cloud(self, deploy_only=False):
         self.cloud_started = True
         self.checkpoint()
         ok, _ = self.launch(
@@ -1052,7 +1106,7 @@ class Runner:
             timeout=5400,
         )
         if not ok or not self.sync_inventory("AWS Inventory"):
-            return
+            return False
         inventory = self.api.unique(
             "inventories", "Ansible Product Demos Inventory", self.org
         )
@@ -1067,13 +1121,15 @@ class Runner:
                 "failed",
                 summary="Not all five expected stack hosts were discovered.",
             )
-            return
+            return False
         self.case(
             "Cloud inventory readiness",
             "passed",
             hosts=5,
             summary="All five expected hosts were discovered; connection tests follow.",
         )
+        if deploy_only:
+            return True
         self.launch(
             "LINUX | Fact Scan",
             {"_hosts": "aws-rhel9:aws-rhel10:reports"},
@@ -1087,7 +1143,7 @@ class Runner:
             timeout=1800,
         )
 
-    def network(self):
+    def network(self, deploy_only=False):
         self.network_started = True
         self.checkpoint()
         ok, _ = self.launch(
@@ -1102,9 +1158,11 @@ class Runner:
             timeout=7200,
         )
         if not ok:
-            return
+            return False
         if not self.sync_inventory("ContainerLab Hypervisor"):
-            return
+            return False
+        if deploy_only:
+            return True
         for name in SUPPORTED["network"]:
             ok, _ = self.launch(name, require_hosts=True, timeout=1800)
             if not ok:
@@ -1125,17 +1183,19 @@ class Runner:
             except ControllerError:
                 quiescent = False
         if (
-            self.baseline_passed
-            and (self.cloud_started or self.network_started)
+            (self.baseline_passed or not self.fixture_guard)
+            and (self.cloud_started or self.network_started or self.pending_cleanup)
             and quiescent
         ):
             try:
-                if not self.guard("capture"):
+                if self.fixture_guard and not self.guard("capture"):
                     raise ControllerError(
                         "Could not record the newly created keypair identifiers"
                     )
-                if not self.guard("ownership"):
+                if self.fixture_guard and not self.guard("ownership"):
                     raise ControllerError("Cleanup ownership validation failed")
+                for name in list(reversed(self.pending_cleanup)):
+                    self.cleanup_template(name)
                 for started, name in (
                     (self.network_started, "NETWORK | Destroy Containerlab Stack"),
                     (self.cloud_started, "Destroy Cloud Stack in AWS"),
@@ -1146,9 +1206,13 @@ class Runner:
                             if name.startswith("NETWORK")
                             else {"create_vm_aws_region": self.args.region}
                         )
-                        ok, _ = self.launch(
-                            name, variables, workflow=True, timeout=1800
-                        )
+                        try:
+                            ok, _ = self.launch(
+                                name, variables, workflow=True, timeout=1800
+                            )
+                        except ControllerError as error:
+                            self.case(name, "failed", summary=str(error))
+                            ok = False
                         self.report["cleanup"].append(
                             {"resource": name, "status": "passed" if ok else "failed"}
                         )
@@ -1165,13 +1229,14 @@ class Runner:
                             "status": "passed" if ok else "failed",
                         }
                     )
-                clean = self.guard("baseline")
-                self.report["cleanup"].append(
-                    {
-                        "resource": "reserved AWS fixture resources absent",
-                        "status": "passed" if clean else "failed",
-                    }
-                )
+                if self.fixture_guard:
+                    clean = self.guard("baseline")
+                    self.report["cleanup"].append(
+                        {
+                            "resource": "reserved AWS fixture resources absent",
+                            "status": "passed" if clean else "failed",
+                        }
+                    )
             except ControllerError as error:
                 self.report["cleanup"].append(
                     {
@@ -1180,7 +1245,7 @@ class Runner:
                         "summary": str(error),
                     }
                 )
-        elif self.cloud_started or self.network_started:
+        elif self.cloud_started or self.network_started or self.pending_cleanup:
             self.report["cleanup"].append(
                 {
                     "resource": "AWS fixtures",
@@ -1287,12 +1352,20 @@ class Runner:
                         "Category setup changed the candidate runtime; infrastructure was not provisioned"
                     )
             self.phase = "baseline"
-            if not self.guard("baseline"):
+            if self.fixture_guard and not self.guard("baseline"):
                 raise ControllerError(
                     "AWS fixture baseline could not be validated; provisioning refused. Inspect the Fixture baseline case for the reason."
                 )
-            self.baseline_passed = True
+            self.baseline_passed = self.fixture_guard
+            if not self.fixture_guard:
+                self.case(
+                    "Fixture guard disabled",
+                    "disabled",
+                    summary="AWS baseline and ownership guard jobs are disabled for this disposable preview. Demo provisioning and teardown jobs run directly; fixture absence and ownership are not independently verified.",
+                )
             self.checkpoint()
+            if self.args.profile == "catalog":
+                Catalog(self).run()
             if self.args.profile in ("baseline-smoke", "cloud-smoke"):
                 self.phase = "cloud"
                 try:
@@ -1332,10 +1405,12 @@ class Runner:
                     self.checkpoint()
             else:
                 self.checkpoint()
+            if self.args.profile == "catalog":
+                Catalog(self).complete_coverage()
         return (
             1
             if any(
-                row["status"] in ("failed", "canceled", "timed_out")
+                row["status"] in ("failed", "canceled", "timed_out", "blocked")
                 for row in self.report["cases"] + self.report["cleanup"]
             )
             else 0
@@ -1349,14 +1424,19 @@ def main():
     parser.add_argument("--image")
     parser.add_argument(
         "--profile",
-        choices=("baseline-smoke", "cloud-smoke", "network-smoke"),
-        default="baseline-smoke",
+        choices=("catalog", "baseline-smoke", "cloud-smoke", "network-smoke"),
+        default="catalog",
     )
     parser.add_argument(
         "--region", choices=("us-east-2", "us-west-2"), default="us-east-2"
     )
     parser.add_argument("--access-cidr", default="0.0.0.0/0")
     parser.add_argument("--run-id", default="local")
+    parser.add_argument(
+        "--fixture-guard",
+        action="store_true",
+        help="Opt in to AWS baseline and cleanup ownership diagnostics (disabled for this preview)",
+    )
     parser.add_argument("--build-metadata", type=Path)
     parser.add_argument("--build-report", type=Path)
     parser.add_argument("--require-built-image", action="store_true")

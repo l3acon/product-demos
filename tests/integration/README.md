@@ -1,7 +1,7 @@
 # APD integration test dependency design
 
-This directory contains the dependency design and an initial executable baseline
-smoke profile. Follow [FIRST-RUN.md](FIRST-RUN.md) to configure credentials, approve
+This directory contains the dependency design, an executable catalog profile, and
+narrower smoke profiles. Follow [FIRST-RUN.md](FIRST-RUN.md) to configure credentials, approve
 the fork workflow, and review the report. The graph builder is offline; the approved
 `run.py` execution configures Controller and provisions fresh fixtures. OpenShift is excluded by
 source category (`openshift/setup.yml`), including its workflows. Infrastructure
@@ -197,3 +197,16 @@ preflight and report generation before implementing the first execution lane:
 cloud deployment → host readiness → subscription readiness → Linux/Windows smoke
 jobs → owned-resource cleanup. Expand through the remaining gated lanes once
 fixture/reset/finalizer behavior is proven.
+
+## Executable catalog preview
+
+The CI default is now `catalog`. The fixture baseline and ownership diagnostics
+are disabled for this disposable preview; native provisioning and teardown jobs
+run directly. `--fixture-guard` opts local runs back into those diagnostics.
+
+The runner follows `scenario_topological_order`, records workflow children, keeps
+independent scenarios running after failures, and accounts for every non-OpenShift
+template in HTML/JSON/JUnit. Missing external fixtures and adapters have explicit
+blocked reasons; they never inflate reached or passed coverage. A catalog run
+with blocked cases is incomplete and exits nonzero. The graph's future functional
+assertions are separate from this template-execution coverage.

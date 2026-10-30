@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       profile:
-        description: Fresh fixtures to provision and test
+        description: Template catalog or smoke subset to execute
         type: choice
-        options: [baseline-smoke, cloud-smoke, network-smoke]
-        default: baseline-smoke
+        options: [catalog, baseline-smoke, cloud-smoke, network-smoke]
+        default: catalog
       region:
         description: AWS region for both fixtures
         type: choice
@@ -97,7 +97,7 @@ jobs:
       - name: Show the exact run awaiting approval
         env:
           CANDIDATE_IMAGE: ${{ steps.image.outputs.image }}
-          TEST_PROFILE: ${{ inputs.profile || vars.APD_TEST_PROFILE || 'baseline-smoke' }}
+          TEST_PROFILE: ${{ inputs.profile || vars.APD_TEST_PROFILE || 'catalog' }}
           TEST_REGION: ${{ inputs.region || vars.APD_TEST_REGION || 'us-east-2' }}
         run: |
           python - <<'PY'
@@ -118,16 +118,18 @@ jobs:
 
           Before approving **apd-integration**, configure APD_URL, APD_USERNAME and APD_PASSWORD as environment secrets for a fresh disposable APD instance.
 
-          The baseline profile configures the candidate project/EE, runs category setup except OpenShift and externally gated Satellite, then provisions five cloud VMs plus the Containerlab hypervisor, tests them and attempts cleanup. Existing reserved fixtures cause a refusal to provision.
+          The catalog profile configures the candidate project/EE, runs category setup except OpenShift and externally gated Satellite, and executes available Cloud, Linux, Windows, AD and Containerlab scenarios in dependency order. Every catalog template is recorded as executed or blocked with its prerequisite. Independent scenarios continue after failures.
 
-          This preview does not run the entire catalog. No PR or Pages deployment is created.
+          The fixture baseline and ownership guard jobs are disabled for this disposable preview. Native deployment and teardown jobs run directly; reserved resources are not independently checked for absence or ownership.
+
+          External fixture gaps remain explicitly blocked; they are never reported as passing. No PR or Pages deployment is created.
           """
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as handle:
               handle.write(summary)
           PY
 
   integration:
-    name: Approved fresh APD smoke test
+    name: Approved APD template integration test
     if: github.repository == 'l3acon/product-demos'
     needs: candidate
     environment: apd-integration
@@ -155,7 +157,7 @@ jobs:
           gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
             --name "$CANDIDATE_EVIDENCE" \
             --dir integration-results/ee-build
-      - name: Configure baseline, provision fixtures, test and finalize
+      - name: Configure APD, execute template catalog and finalize
         env:
           APD_URL: ${{ secrets.APD_URL }}
           APD_USERNAME: ${{ secrets.APD_USERNAME }}
@@ -165,7 +167,7 @@ jobs:
           APD_REGISTRY_HOST: ghcr.io
           APD_REGISTRY_USERNAME: ${{ github.actor }}
           APD_REGISTRY_PASSWORD: ${{ github.token }}
-          TEST_PROFILE: ${{ inputs.profile || vars.APD_TEST_PROFILE || 'baseline-smoke' }}
+          TEST_PROFILE: ${{ inputs.profile || vars.APD_TEST_PROFILE || 'catalog' }}
           TEST_REGION: ${{ inputs.region || vars.APD_TEST_REGION || 'us-east-2' }}
           TEST_ACCESS_CIDR: ${{ vars.APD_ACCESS_CIDR || '0.0.0.0/0' }}
         run: |

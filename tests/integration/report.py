@@ -35,7 +35,7 @@ def render(report, directory):
             ET.SubElement(
                 test, "failure", message=row.get("summary", "Execution failed")
             )
-        elif row["status"] in ("blocked", "not_selected", "not_reached"):
+        elif row["status"] in ("blocked", "not_selected", "not_reached", "disabled"):
             ET.SubElement(test, "skipped", message=row.get("summary", "Not executed"))
     suite.set(
         "failures",
@@ -47,7 +47,7 @@ def render(report, directory):
         "skipped",
         str(
             sum(
-                row["status"] in ("blocked", "not_selected", "not_reached")
+                row["status"] in ("blocked", "not_selected", "not_reached", "disabled")
                 for row in checks
             )
         ),
@@ -147,7 +147,8 @@ def sample(graph, output):
         "sample": True,
         "scope": "Illustrative report only. No APD connection, EE validation or infrastructure changes occurred.",
         "metadata": {
-            "profile": "baseline-smoke",
+            "profile": "catalog",
+            "fixture_guard": "disabled",
             "candidate_commit": "a" * 40,
             "candidate_image": "ghcr.io/example/product-demos/apd-ee-27@sha256:"
             + "a" * 64,
@@ -181,26 +182,56 @@ def sample(graph, output):
                 "summary": "Cloud, Infrastructure, Linux, Network and Windows templates installed (sample).",
             },
             {
-                "name": "Fixture baseline",
-                "status": "failed",
+                "name": "Fixture guard disabled",
+                "status": "disabled",
                 "kind": "diagnostic",
                 "phase": "baseline",
+                "summary": "Baseline and ownership diagnostics are disabled; demo jobs run directly (sample).",
+            },
+            {
+                "name": "Deploy Cloud Stack in AWS",
+                "status": "failed",
+                "kind": "workflow_job_template",
+                "phase": "cloud",
                 "job_id": 103,
+                "summary": "An actual deployment child job failed; its result is shown below (sample).",
+            },
+            {
+                "name": "Cloud | AWS | Create VM",
+                "status": "failed",
+                "kind": "job_template",
+                "phase": "cloud",
+                "job_id": 104,
                 "elapsed": 7,
                 "ee_provenance": "configured digest verified",
-                "summary": "AWS inspection failed: the credential cannot describe reserved VPCs. No infrastructure was provisioned (sample).",
-                "failure_categories": ["aws_permissions"],
+                "summary": "EC2 instance deployment failed with an illustrative Python dependency error (sample).",
+                "failure_categories": ["python_dependency"],
                 "events": [
                     {
-                        "task": "Inspect reserved VPCs",
-                        "action": "amazon.aws.ec2_vpc_net_info",
+                        "task": "Create instance",
+                        "action": "amazon.aws.ec2_instance",
                         "host": "localhost",
                         "status": "failed",
                         "redacted": True,
-                        "source": "tests/integration/fixture_guard.yml",
-                        "line": 9,
+                        "source": "collections/ansible_collections/demo/cloud/roles/aws/tasks/create_vm.yml",
+                        "line": 99,
                     }
                 ],
+            },
+            {
+                "name": "NETWORK | Deploy Containerlab Stack",
+                "status": "passed",
+                "kind": "workflow_job_template",
+                "phase": "network",
+                "job_id": 105,
+                "summary": "The independent Containerlab workflow still ran after the cloud failure (sample).",
+            },
+            {
+                "name": "LINUX | Fact Scan",
+                "status": "blocked",
+                "kind": "coverage",
+                "phase": "linux",
+                "summary": "The required cloud hosts were not deployed (sample).",
             },
         ],
         "runtime": {
@@ -225,7 +256,24 @@ def sample(graph, output):
             "tools": {"helm": True, "terraform": True, "oc": True},
         },
         "ee_build": {"mode": "built", "platform": "linux/amd64"},
-        "coverage": {entry["name"]: "not_selected" for entry in graph["templates"]},
+        "coverage": {entry["name"]: "blocked" for entry in graph["templates"]},
+        "scenarios": [
+            {
+                "id": "cloud-stack",
+                "status": "failed",
+                "summary": "A deployment child failed (sample).",
+            },
+            {
+                "id": "containerlab",
+                "status": "passed",
+                "summary": "Independent deployment continued (sample).",
+            },
+            {
+                "id": "linux-general",
+                "status": "blocked",
+                "summary": "Cloud hosts were not deployed (sample).",
+            },
+        ],
         "cleanup": [
             {
                 "resource": "temporary Controller project / EE / templates",

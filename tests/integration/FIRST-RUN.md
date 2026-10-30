@@ -138,9 +138,9 @@ of the same pinned digest reproduced these findings on October 29, 2026:
 This finding motivated the default source build stage. That old digest still fails compatibility validation; CI now builds and tests
 the GHCR candidate without a Quay fallback.
 
-Repository variables `APD_TEST_PROFILE` (`baseline-smoke`, `cloud-smoke`, or
+Repository variables `APD_TEST_PROFILE` (`catalog`, `baseline-smoke`, `cloud-smoke`, or
 `network-smoke`), `APD_TEST_REGION` (`us-east-2` or `us-west-2`), and `APD_ACCESS_CIDR`
-control the run. Defaults are baseline smoke, us-east-2, and the APD management
+control the run. Defaults are catalog execution, us-east-2, and the APD management
 CIDR default. The baseline profile creates five cloud VMs and one c8i.4xlarge
 Containerlab hypervisor with four virtual network devices; it can take hours.
 
@@ -164,21 +164,42 @@ Containerlab hypervisor with four virtual network devices; it can take hours.
 5. Rebind ordinary templates, including explicit legacy EE overrides, and eligible
    inventory sources to the candidate. AO and ROSA keep their specialized runtime
    declarations and are not executed by this profile.
-6. Query AWS using the instance's existing AWS credential. Reserved VPCs,
-   keypairs or instance names must be absent. Provisioning refuses an existing
-   stack rather than adopting or deleting it.
-7. Launch **Deploy Cloud Stack in AWS**, observe its child jobs, explicitly sync
-   AWS inventory, require all five hosts, then run **LINUX / Fact Scan** and
-   **WINDOWS / Test Connectivity** using the candidate EE.
-8. Launch **NETWORK / Deploy Containerlab Stack**, observe its child jobs and sync
-   inventory. Run Configure Devices, Validate Devices, Troubleshoot, Backup and
-   Report in order. Network validation does not require RHSM/Insights credentials.
-9. Attempt cleanup after success or failure, including partial provisioning.
-   Validate VPC and instance ownership and recorded new keypair IDs before deletion;
-   the source provisioner does not tag `clab-key` with an owner. Run both destroy
-   workflows as applicable, remove the unique report bucket and verify fixture
-   absence. Restore captured bindings/project source and its checkout, then remove
-   temporary diagnostics and release the integration lease.
+6. The fixture guard is **disabled by default** for this disposable preview. No
+   baseline, key capture, ownership or post-cleanup guard job is launched. The
+   native demo provisioning and teardown templates run directly. Reports clearly
+   state that AWS fixture absence and ownership were not independently verified.
+   A local run can opt back in with `--fixture-guard`.
+7. The default **catalog** profile follows the generated README dependency order.
+   It launches **Deploy Cloud Stack in AWS**, records actual workflow children,
+   syncs AWS inventory and requires the five expected hosts. Containerlab is an
+   independent lane: a cloud deployment failure does not prevent its deployment.
+8. Execute the available subscription, Linux utility/application, Windows,
+   Active Directory, ACME application, cloud patching, Containerlab and peer/transit
+   networking sequences. Required inputs use disposable test values and the
+   selected region. Independent jobs within a sequence continue after failures;
+   scenarios whose required prerequisites failed are blocked explicitly.
+9. Every one of the 116 non-OpenShift source templates appears in coverage. Jobs
+   requiring external fixtures (Satellite, ROSA, PAN-OS, Insights, AO, licensed IOS
+   images, dedicated hardening hosts), event/restore/cleanup adapters or a feedback
+   sink remain **blocked with a reason**. This does not claim those templates ran.
+   The report shows scenario results, actual Controller jobs and authenticated
+   logs; blocked entries never count as reached. An incomplete catalog run exits
+   nonzero, and blocked entries are JUnit skipped cases.
+10. Attempt native teardown after success or failure, including partial deployment.
+    Run peer/transit deletion before reusing their selectors; remove AD VMs before
+    cloud teardown; explicitly cover the standalone VM deletion template. Run both
+    stack destroy workflows as applicable and remove the unique report bucket.
+    One teardown launch failure does not skip the other stack's teardown. Restore
+    captured bindings/project source and checkout, remove temporary diagnostics,
+    and release the lease only when cleanup succeeded.
+
+Smoke profiles remain available for narrower runs. They also skip guard jobs by
+default; their small template subset is explicitly identified in the report.
+
+Catalog execution currently tests Controller execution and candidate EE provenance.
+The scenario graph contains additional future functional assertions (for example,
+HTTP page contents and post-patching state); running the listed jobs does not claim
+those assertions were implemented or passed.
 
 The runner uses the actual setup and demo templates from the candidate revision.
 It overrides VPC Report's bucket name with a unique run bucket so the test does not

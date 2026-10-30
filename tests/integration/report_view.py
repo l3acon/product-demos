@@ -20,14 +20,19 @@ LABELS = {
     "running": "Running",
     "not_started": "Not run",
     "retained": "Retained",
+    "disabled": "Disabled",
+    "deferred": "Deferred",
 }
 BAD = {"failed", "timed_out", "canceled"}
 PHASES = [
     ("configure", "Configure APD"),
     ("runtime", "Validate EE"),
     ("setup", "Install demos"),
-    ("baseline", "Check AWS baseline"),
+    ("baseline", "Fixture guard"),
     ("cloud", "Cloud tests"),
+    ("linux", "Linux tests"),
+    ("windows", "Windows tests"),
+    ("infrastructure", "Infrastructure tests"),
     ("network", "Network tests"),
     ("cleanup", "Cleanup"),
 ]
@@ -202,14 +207,22 @@ def dashboard(report):
             for row in rows
         )
     )
+    incomplete = any(row.get("status") == "blocked" for row in rows)
     outcome = (
-        "failed" if failures or cleanup_failed else "passed" if complete else "running"
+        "failed"
+        if failures or cleanup_failed
+        else "blocked"
+        if complete and incomplete
+        else "passed"
+        if complete
+        else "running"
     )
     title = "EE build report" if build_only else "APD integration report"
     headline = {
         "failed": "Run failed — inspect the highlighted checks",
         "passed": "Run completed successfully",
         "running": "Run in progress",
+        "blocked": "Run incomplete — some templates could not execute",
     }[outcome]
     counts = Counter(status(row.get("status")) for row in rows + cleanup)
     failure_count = len(failures) + sum(
@@ -276,8 +289,10 @@ def dashboard(report):
         return (
             "failed"
             if any(value in BAD or value == "retained" for value in values)
+            else "disabled"
+            if values and all(value == "disabled" for value in values)
             else "passed"
-            if values and all(value == "passed" for value in values)
+            if values and all(value in ("passed", "disabled") for value in values)
             else "blocked"
             if values
             else "not_started"
@@ -311,6 +326,8 @@ def dashboard(report):
         + (
             "✓ No failures reported. Cleanup is complete."
             if outcome == "passed"
+            else "Some templates could not execute. Review blocked cases and scenario prerequisites below."
+            if outcome == "blocked"
             else "No failures recorded yet. This run has not finished."
         )
         + "</section>"
@@ -360,9 +377,12 @@ def dashboard(report):
         for row in cleanup
     )
     coverage = report.get("coverage", {})
-    reached = sum(
-        status(value) not in ("not_selected", "not_reached", "not_started")
-        for value in coverage.values()
+    reached = len(
+        {
+            row["name"]
+            for row in rows
+            if row.get("job_id") is not None and row["name"] in coverage
+        }
     )
     coverage_rows = "".join(
         f"<tr><td>{e(name)}</td><td>{badge(value)}</td></tr>"
@@ -378,6 +398,22 @@ def dashboard(report):
         )
         else ""
     )
+    scenario_rows = "".join(
+        f'<tr><td><strong>{e(row["id"])}</strong></td><td>{badge(row["status"])}</td><td>{e(row.get("summary", ""))}</td></tr>'
+        for row in report.get("scenarios", [])
+    )
+    scenario_panel = (
+        '<section id="scenarios"><div class="section-heading"><h2>Scenario dependencies and blockers</h2></div><div class="panel table-scroll"><table><thead><tr><th>Scenario</th><th>Result</th><th>Reason / execution evidence</th></tr></thead><tbody>'
+        + scenario_rows
+        + "</tbody></table></div></section>"
+        if scenario_rows
+        else ""
+    )
+    coverage_note = (
+        "Every non-OpenShift template is accounted for. Blocked entries did not execute and do not count as reached or passing. Workflow children count only when Controller actually launched them."
+        if metadata.get("profile") == "catalog"
+        else "This profile exercises a subset of the catalog. Not-selected cases are not counted as passing. OpenShift is excluded."
+    )
     stylesheet = Path(__file__).with_name("report.css").read_text()
     advanced = e(
         json.dumps(
@@ -390,9 +426,9 @@ def dashboard(report):
 <div class="metrics"><article><span>Controller jobs</span><strong>{job_count}</strong></article><article><span>Passed checks</span><strong class="green">{counts['passed']}</strong></article><article><span>Failed checks</span><strong class="{'red' if failure_count else ''}">{failure_count}</strong></article><article><span>Catalog templates reached</span><strong>{reached}<small> / {len(coverage)}</small></strong></article></div>
 {failure_panel}<section class="image-card"><div class="eyebrow">Image under test</div><h2>{source}</h2><code class="image-ref">{e(image)}</code><div class="version-chips">{chips}</div><p class="muted">{e(metadata.get('runtime_digest', 'Build digest and source checksums are recorded in the evidence.'))}</p>{restoration_note}</section>
 <section><div class="section-heading"><h2>Run progression</h2><span>Status includes failure and skipped phases</span></div><ol class="phases {'build-phases' if build_only else ''}">{phases}</ol></section>
-<div id="executions">{''.join(executions)}</div>
+{scenario_panel}<div id="executions">{''.join(executions)}</div>
 <section id="runtime"><div class="section-heading"><h2>Execution environment versions</h2>{badge('passed' if runtime.get('compatible') is True else 'failed' if runtime.get('compatible') is False else 'not_started')}</div>{runtime_fail}<div class="runtime-checks">{checks}</div><details class="panel" {'open' if runtime.get('compatible') is False else ''}><summary>Collection inventory · {len(runtime.get('collections', []))} collections · compare CI build and Controller</summary><div class="table-scroll"><table><thead><tr><th>Collection</th><th>CI build</th><th>Observed</th><th>Source constraint</th><th>Compatibility</th></tr></thead><tbody>{collection_rows}</tbody></table></div></details></section>
 <section id="cleanup"><div class="section-heading"><h2>Cleanup and restoration</h2>{badge('failed' if cleanup_failed else 'passed' if cleanup else 'not_started')}</div><div class="panel table-scroll"><table><thead><tr><th>Outcome</th><th>Resource / action</th></tr></thead><tbody>{cleanup_rows or '<tr><td colspan="2">No cleanup result recorded yet.</td></tr>'}</tbody></table></div></section>
-<details class="panel"><summary>Full catalog coverage · {reached} / {len(coverage)} reached</summary><p class="muted">This profile exercises a subset of the catalog. Not-selected cases are not counted as passing. OpenShift is excluded.</p><div class="table-scroll"><table><thead><tr><th>Template</th><th>Coverage</th></tr></thead><tbody>{coverage_rows}</tbody></table></div></details>
+<details class="panel"><summary>Full catalog coverage · {reached} / {len(coverage)} reached</summary><p class="muted">{coverage_note}</p><div class="table-scroll"><table><thead><tr><th>Template</th><th>Coverage</th></tr></thead><tbody>{coverage_rows}</tbody></table></div></details>
 <details class="panel"><summary>EE build provenance and run metadata</summary><pre>{advanced}</pre></details>
 <footer><h2>Download evidence</h2><div class="downloads"><a href="run.log">Sanitized run log</a><a href="report.json">JSON report</a><a href="junit.xml">JUnit results</a></div><p>Task output can contain passwords and tokens. This report includes canonical source task names and normalized failures; full logs remain behind Controller authentication. Source metadata and log links contain no login credentials.</p></footer></main></body></html>"""

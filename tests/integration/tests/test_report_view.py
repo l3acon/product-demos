@@ -8,11 +8,28 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from diagnostics import public_events
-from report import render
+from report import render, sample
 from report_view import job_url
 
 
 class ReportViewTests(unittest.TestCase):
+    def test_sample_shows_disabled_guard_and_actual_template_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(__file__).resolve().parents[3]
+            graph = json.loads(
+                (root / "tests/integration/generated/dependency-graph.json").read_text()
+            )
+            sample(graph, Path(directory))
+            report = json.loads((Path(directory) / "report.json").read_text())
+            cases = {row["name"]: row for row in report["cases"]}
+            self.assertTrue(report["sample"])
+            self.assertEqual(cases["Fixture guard disabled"]["status"], "disabled")
+            self.assertEqual(cases["Cloud | AWS | Create VM"]["status"], "failed")
+            self.assertEqual(
+                cases["NETWORK | Deploy Containerlab Stack"]["status"], "passed"
+            )
+            self.assertNotIn("Fixture baseline", cases)
+
     def test_unsupported_ec2_parameter_is_reported_without_invocation(self):
         root = Path(__file__).resolve().parents[3]
         path = (

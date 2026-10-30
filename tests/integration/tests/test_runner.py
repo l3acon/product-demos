@@ -421,6 +421,7 @@ class FakeController:
                     "name": entry["name"],
                     "organization": self.org,
                     "survey_enabled": False,
+                    "ask_variables_on_launch": True,
                 }
             self.add(kind, payload)
         for name in ("AWS Inventory", "ContainerLab Hypervisor", "Insights Inventory"):
@@ -448,6 +449,7 @@ class RunnerTests(unittest.TestCase):
             image="quay.io/example/candidate@sha256:" + "c" * 64,
             run_id="test-1",
             profile="baseline-smoke",
+            fixture_guard=True,
             timeout=10000,
             poll_interval=0,
             region="us-east-2",
