@@ -24,9 +24,38 @@ def render(report, directory):
         for row in report.get("cleanup", [])
     ]
     checks = rows + cleanup_checks
+    metadata = report.get("metadata", {})
+    if (
+        metadata.get("state") == "incomplete"
+        or report.get("pending_jobs")
+        and metadata.get("state") not in ("running", "finalizing")
+    ) and not any(
+        row["name"] == "Cleanup / Controller job completion" for row in checks
+    ):
+        checks.append(
+            {
+                "name": "Controller job completion",
+                "kind": "lifecycle",
+                "status": "blocked",
+                "summary": "Owned jobs remain active or unverified; this report is incomplete.",
+            }
+        )
     counts = Counter(row["status"] for row in checks)
     (directory / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     suite = ET.Element("testsuite", name="APD integration", tests=str(len(checks)))
+    properties = ET.SubElement(suite, "properties")
+    ET.SubElement(
+        properties,
+        "property",
+        name="report_state",
+        value=str(metadata.get("state", "legacy")),
+    )
+    ET.SubElement(
+        properties,
+        "property",
+        name="pending_jobs",
+        value=str(len(report.get("pending_jobs", []))),
+    )
     for row in checks:
         test = ET.SubElement(
             suite, "testcase", name=row["name"], classname=row.get("kind", "preflight")
@@ -73,7 +102,28 @@ def render(report, directory):
         "",
         summary,
         "",
+        "**Report state:** "
+        + str(
+            metadata.get("state", "finished" if metadata.get("finished") else "interim")
+        ),
+        "",
     ]
+    if report.get("pending_jobs"):
+        markdown += [
+            "## Jobs still active or unverified",
+            "",
+            "This report is incomplete until these jobs and their task events settle.",
+            "",
+        ]
+        for row in report["pending_jobs"]:
+            url = job_url(report, row)
+            label = f"Job {row.get('job_id', 'unknown')}"
+            markdown.append(
+                f"- [{label}]({url}) — {row.get('controller_status', 'unverified')}"
+                if url
+                else f"- {label} — unverified"
+            )
+        markdown.append("")
     failed = [
         row for row in rows if row["status"] in ("failed", "timed_out", "canceled")
     ]
@@ -117,12 +167,20 @@ def render(report, directory):
         "Download **report.html** for the phase timeline, highlighted failures, EE versions and authenticated Controller log links.",
         "",
     ]
-    log = [title, summary, ""]
+    log = [title, "Report state: " + str(metadata.get("state", "legacy")), summary, ""]
+    for pending in report.get("pending_jobs", []):
+        log.append(
+            f"PENDING job {pending.get('job_id')}: {pending.get('controller_status', 'unverified')}; task events pending={pending.get('events_pending', False)}"
+        )
     for row in rows:
         at = row.get("timestamp", "")
         log.append(
             f"{at} [{row['status'].upper()}] [{row.get('phase', 'execution')}] {row['name']}: {row.get('summary', '')}"
         )
+        if row.get("workflow_id"):
+            log.append(
+                f"  Workflow {row['workflow_id']}, node {row.get('node_identifier', '')}; Controller status: {row.get('controller_status', 'unavailable')}"
+            )
         url = job_url(report, row)
         if url:
             log.append("  Controller logs: " + url)
@@ -149,6 +207,7 @@ def sample(graph, output):
         "metadata": {
             "profile": "catalog",
             "fixture_guard": "disabled",
+            "state": "finished",
             "candidate_commit": "a" * 40,
             "candidate_image": "ghcr.io/example/product-demos/apd-ee-27@sha256:"
             + "a" * 64,
@@ -198,6 +257,10 @@ def sample(graph, output):
             },
             {
                 "name": "Cloud | AWS | Create VM",
+                "workflow_id": 103,
+                "workflow_name": "Deploy Cloud Stack in AWS",
+                "node_identifier": "Create VM (sample)",
+                "controller_status": "failed",
                 "status": "failed",
                 "kind": "job_template",
                 "phase": "cloud",
@@ -274,6 +337,14 @@ def sample(graph, output):
                 "summary": "Cloud hosts were not deployed (sample).",
             },
         ],
+        "workflow_reuse": {
+            "Cloud | AWS | Create VM": {
+                "workflows": ["Deploy Cloud Stack in AWS"],
+                "job_ids": [104],
+                "status": "failed",
+                "summary": "The workflow child is the test execution; no duplicate standalone launch (sample).",
+            }
+        },
         "cleanup": [
             {
                 "resource": "temporary Controller project / EE / templates",

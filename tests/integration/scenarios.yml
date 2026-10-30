@@ -131,7 +131,8 @@ scenarios:
     notes: WINDOWS | Rollback only prints a message; it does not delete infrastructure.
 
   - id: active-directory
-    needs: [windows-general]
+    needs: [cloud-stack]
+    after_completion: [windows-general]
     requires: [aws]
     locks: [aws_test_network, ad_domain]
     evidence: [windows/README.md, windows/docs/windows-setup-ad-domain.md, windows/setup.yml]
@@ -153,7 +154,8 @@ scenarios:
       - template: LINUX | Insights Compliance Scan
 
   - id: acme
-    needs: [linux-general]
+    needs: [subscriptions]
+    after_completion: [linux-general]
     locks: [cloud_workers]
     evidence: [infrastructure/docs/config-drift-simple.md, infrastructure/acme-app/README.md]
     steps:
@@ -198,8 +200,8 @@ scenarios:
     notes: Network Configuration is redundant on RHDP but is an explicit coverage case. AO-native workflow testing is a later scope.
 
   - id: cloud-patching
-    needs: [linux-general, windows-general]
-    after_completion: [active-directory, insights, event-driven-drift, orchestrator]
+    needs: [subscriptions, cloud-stack]
+    after_completion: [linux-general, windows-general, active-directory, insights, event-driven-drift, orchestrator]
     requires: [patch_inputs]
     locks: [cloud_workers, cloud_windows, report_server]
     evidence: [cloud/docs/patch-cloud-stack.md, linux/docs/linux-patching.md, windows/docs/windows-patching.md]

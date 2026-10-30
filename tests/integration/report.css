@@ -7,3 +7,5 @@
 @media(max-width:620px){.build-phases{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .hero.blocked{border-left-color:#b07920}.hero.blocked~.success-note{background:#fff0d8;color:#89520a;border-color:#e6c899}.phases li.blocked{border-top-color:#b07920}
+
+.lifecycle-note{background:#fff0d8;border:1px solid #e6c899;border-left:4px solid #b07920;border-radius:8px;padding:20px}.lifecycle-note p,.lifecycle-note li{font-size:13px}.workflow-context{background:#edf4ff;border-left:3px solid #bad0ea;padding:10px 12px;font-size:12px}

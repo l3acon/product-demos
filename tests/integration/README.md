@@ -210,3 +210,10 @@ template in HTML/JSON/JUnit. Missing external fixtures and adapters have explici
 blocked reasons; they never inflate reached or passed coverage. A catalog run
 with blocked cases is incomplete and exits nonzero. The graph's future functional
 assertions are separate from this template-execution coverage.
+
+Workflow coverage is preferred over duplicate standalone executions. Child records
+include workflow and node identity, and failed/untaken branches are not counted as
+passing. The observer waits for nested children, scheduler decisions and task-event
+ingestion; completion barriers protect teardown and Controller binding restoration.
+Checkpoints explicitly say running/finalizing. An unresolved final snapshot is
+labelled incomplete and retains the resource lease and required bindings.

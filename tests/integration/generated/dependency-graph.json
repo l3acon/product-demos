@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design_only",
-  "source_revision": "2ebd4e4c000fce62c884cf7a6f68ac7d6b436988",
+  "source_revision": "da5d4f6e9738a50c65a224ed0492f68d89c2ac38",
   "execution_policy": {
     "workflow_children": "Observe Controller-created child jobs; never relaunch them as parallel copies.",
     "failure_branches": "Untaken branches are not executed coverage; add explicit recovery cases.",
@@ -4476,6 +4476,9 @@
     {
       "id": "active-directory",
       "needs": [
+        "cloud-stack"
+      ],
+      "after_completion": [
         "windows-general"
       ],
       "requires": [
@@ -4538,6 +4541,9 @@
     {
       "id": "acme",
       "needs": [
+        "subscriptions"
+      ],
+      "after_completion": [
         "linux-general"
       ],
       "locks": [
@@ -4660,10 +4666,12 @@
     {
       "id": "cloud-patching",
       "needs": [
-        "linux-general",
-        "windows-general"
+        "subscriptions",
+        "cloud-stack"
       ],
       "after_completion": [
+        "linux-general",
+        "windows-general",
         "active-directory",
         "insights",
         "event-driven-drift",
@@ -5435,9 +5443,14 @@
       "condition": "success"
     },
     {
-      "from": "windows-general",
+      "from": "cloud-stack",
       "to": "active-directory",
       "condition": "success"
+    },
+    {
+      "from": "windows-general",
+      "to": "active-directory",
+      "condition": "terminal"
     },
     {
       "from": "subscriptions",
@@ -5445,9 +5458,14 @@
       "condition": "success"
     },
     {
-      "from": "linux-general",
+      "from": "subscriptions",
       "to": "acme",
       "condition": "success"
+    },
+    {
+      "from": "linux-general",
+      "to": "acme",
+      "condition": "terminal"
     },
     {
       "from": "acme",
@@ -5465,14 +5483,24 @@
       "condition": "success"
     },
     {
-      "from": "linux-general",
+      "from": "subscriptions",
       "to": "cloud-patching",
       "condition": "success"
     },
     {
-      "from": "windows-general",
+      "from": "cloud-stack",
       "to": "cloud-patching",
       "condition": "success"
+    },
+    {
+      "from": "linux-general",
+      "to": "cloud-patching",
+      "condition": "terminal"
+    },
+    {
+      "from": "windows-general",
+      "to": "cloud-patching",
+      "condition": "terminal"
     },
     {
       "from": "active-directory",

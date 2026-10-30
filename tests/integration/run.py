@@ -22,6 +22,7 @@ from controller import Controller, ControllerError
 from diagnostics import public_events
 from report import render
 from recovery import previous_evidence, reconcile_preprovisioning
+from workflow_observer import WorkflowObserver, ready
 import yaml
 
 
@@ -207,6 +208,8 @@ class Runner:
         self.snapshots = []
         self.active = set()
         self.recorded_jobs = set()
+        self.recorded_results = {}
+        self.observer = WorkflowObserver(self)
         self.cloud_started = False
         self.network_started = False
         self.baseline_passed = False
@@ -235,6 +238,7 @@ class Runner:
                 "candidate_image": args.image,
                 "repository": args.repository,
                 "fixture_guard": "enabled" if self.fixture_guard else "disabled",
+                "state": "running",
                 "started": now(),
                 "runtime_digest": "configured immutable digest checked; actual pod image evidence unavailable",
             },
@@ -286,6 +290,7 @@ class Runner:
         self.checkpoint()
 
     def checkpoint(self):
+        self.report["pending_jobs"] = self.observer.pending()
         render(self.report, self.args.output)
         ledger = {
             "run_id": self.args.run_id,
@@ -297,6 +302,8 @@ class Runner:
             "pending_cleanup": list(self.pending_cleanup),
             "created": self.created,
             "active": sorted(self.active),
+            "unresolved_workflows": sorted(self.observer.unresolved),
+            "pending_jobs": self.report["pending_jobs"],
             "snapshot_fields": [
                 {"path": path, "fields": sorted(data)} for path, data in self.snapshots
             ],
@@ -339,38 +346,92 @@ class Runner:
         self.active.add(path)
         self.checkpoint()
         events_deadline = None
+        inspection_failures = 0
         while self.clock() < end:
             row = self.api.get(path)
-            if row.get("status") in TERMINAL:
-                # Terminal execution can precede ingestion of set_stats and error events.
-                if row.get("event_processing_finished") is not False:
-                    self.active.discard(path)
+            self.observer.remember(row)
+            if row.get("type") == "workflow_job":
+                try:
+                    settled = self.observer.inspect(row)
+                    inspection_failures = 0
+                except ControllerError as error:
+                    inspection_failures += 1
+                    if inspection_failures >= 3:
+                        raise ControllerError(
+                            "Workflow child observation failed after retries: "
+                            + str(error)
+                        ) from None
+                    settled = False
+                if settled:
                     self.checkpoint()
                     return row
+            elif ready(row):
+                self.active.discard(path)
+                self.checkpoint()
+                return row
+            elif row.get("status") in TERMINAL:
                 if events_deadline is None:
                     events_deadline = self.clock() + 120
                 if self.clock() >= events_deadline:
-                    self.active.discard(path)
-                    self.checkpoint()
-                    return row
+                    raise ControllerError(
+                        "Terminal job task events did not finish processing; execution evidence remains incomplete"
+                    )
             if self.clock() >= heartbeat:
                 print(
-                    f"waiting: Controller job {row['id']} is {row.get('status', 'pending')}",
+                    f"waiting: Controller job {row['id']} is {row.get('status', 'pending')}; waiting for its children and task events",
                     flush=True,
                 )
                 heartbeat = self.clock() + 60
+            self.checkpoint()
             self.sleep(self.args.poll_interval)
         try:
             self.api.post(path + "cancel/")
+            # Canceling a workflow does not prove that its children have stopped.
             for _ in range(30):
                 row = self.api.get(path)
-                if row.get("status") in TERMINAL:
+                self.observer.remember(row)
+                if row.get("type") == "workflow_job":
+                    if self.observer.inspect(row):
+                        break
+                elif ready(row):
                     self.active.discard(path)
                     break
                 self.sleep(2)
         except ControllerError:
             pass
-        raise ControllerError("Job timeout; cancellation requested")
+        self.checkpoint()
+        raise ControllerError(
+            "Job timeout; cancellation requested and remaining jobs recorded"
+        )
+
+    def settle_jobs(self, timeout=180):
+        """No teardown or binding restoration may overtake owned jobs."""
+        for path in list(self.observer.roots):
+            try:
+                self.observer.inspect(self.api.get(path))
+            except ControllerError:
+                self.active.add(path)
+                self.observer.unresolved.add(path)
+        for path in list(self.active):
+            try:
+                # Ordinary test failures do not cancel siblings. wait() requests
+                # cancellation only if the bounded drain time is exhausted.
+                self.wait(path, timeout)
+            except ControllerError:
+                pass
+        # Recheck roots after cancellation to discover any late scheduler children.
+        for path in list(self.observer.roots):
+            try:
+                self.observer.inspect(self.api.get(path))
+            except ControllerError:
+                self.active.add(path)
+                self.observer.unresolved.add(path)
+        self.checkpoint()
+        quiet = not (self.active or self.observer.unresolved)
+        if quiet:
+            for path in self.observer.roots:
+                self.workflow_children(self.observer.jobs[path])
+        return quiet
 
     def inventory_source(self, name):
         return self.api.unique("inventory_sources", name)
@@ -587,8 +648,12 @@ class Runner:
 
     def record_job(self, job, name=None, kind="job_template", require_hosts=False):
         if job["url"] in self.recorded_jobs:
-            return job["status"] == "successful"
-        self.recorded_jobs.add(job["url"])
+            return self.recorded_results[job["url"]]
+        if not ready(job):
+            self.active.add(job["url"])
+            raise ControllerError(
+                "A nonterminal job or unfinished task events cannot be recorded as a final result"
+            )
         name = name or job.get("name", "Controller job")
         status = JOB_STATUS.get(job["status"], "failed")
         summary = "Execution completed."
@@ -675,6 +740,12 @@ class Runner:
                 "NETWORK | Report": devices | {"clab-hypervisor"},
                 "NETWORK | Backup": {"cat8kv1"},
             }.get(name, set())
+            if (
+                name == "WINDOWS | Test Connectivity"
+                and self.observer.parents.get(job["url"], {}).get("workflow_name")
+                == "Setup Active Directory Domain"
+            ):
+                expected = {"dc01", "winston", "winthrop"}
             if not expected <= reached:
                 status, summary = (
                     "failed",
@@ -797,18 +868,24 @@ class Runner:
             failure_categories=sorted(categories),
             elapsed=job.get("elapsed", 0),
             events=diagnostics,
+            controller_status=job["status"],
+            **self.observer.parents.get(job["url"], {}),
         )
         if name in self.report["coverage"]:
             prior = self.report["coverage"][name]
             self.report["coverage"][name] = (
                 "failed" if prior == "failed" or row["status"] != "passed" else "passed"
             )
+        self.recorded_jobs.add(job["url"])
+        self.recorded_results[job["url"]] = status == "passed"
         self.checkpoint()
         return status == "passed"
 
     def workflow_children(self, job):
         passed = True
-        nodes = self.api.list(job["url"] + "workflow_nodes/?page_size=200")
+        nodes = self.observer.nodes.get(job["url"])
+        if nodes is None:
+            nodes = self.api.list(job["url"] + "workflow_nodes/?page_size=200")
         definition = next(
             (row for row in self.graph["workflows"] if row["name"] == job["name"]), None
         )
@@ -829,38 +906,91 @@ class Runner:
                 .get("name")
             )
             if not node.get("job"):
+                missing_template = (
+                    "unified_job_template" in node
+                    and node["unified_job_template"] is None
+                )
+                if any(
+                    row.get("workflow_id") == job["id"]
+                    and row.get("node_identifier") == str(identifier)
+                    and row.get("kind") == "workflow_node"
+                    for row in self.report["cases"]
+                ):
+                    passed = (not missing_template) and passed
+                    continue
                 self.case(
                     target or identifier,
-                    "not_reached",
+                    "failed" if missing_template else "not_reached",
                     "workflow_node",
-                    summary="Conditional branch was not executed.",
+                    workflow_id=job["id"],
+                    workflow_name=job.get("name", "Workflow"),
+                    node_identifier=str(identifier),
+                    summary="Workflow node has no job template; no child execution was possible."
+                    if missing_template
+                    else "Conditional branch was not executed.",
                 )
+                if missing_template:
+                    passed = False
                 continue
-            child = self.api.get(f"/api/controller/v2/unified_jobs/{node['job']}/")
-            # Unified-job detail may omit job-specific provenance; follow its typed URL.
-            collections = {
-                "job": "jobs",
-                "inventory_update": "inventory_updates",
-                "project_update": "project_updates",
-                "workflow_job": "workflow_jobs",
-                "workflow_approval": "workflow_approvals",
-            }
-            child = self.api.get(
-                f"/api/controller/v2/{collections[child['type']]}/{child['id']}/"
-            )
-            kind = (
-                "job_template"
-                if child.get("type") == "job"
-                else child.get("type", "supporting_update")
-            )
-            passed = (
-                self.record_job(
+            self.report["cases"] = [
+                row
+                for row in self.report["cases"]
+                if not (
+                    row.get("workflow_id") == job["id"]
+                    and row.get("node_identifier") == str(identifier)
+                    and row.get("status") == "not_reached"
+                )
+            ]
+            try:
+                child_path = self.observer.child_path(node)
+                child = self.observer.jobs.get(child_path) or self.api.get(child_path)
+                self.observer.parents[child_path] = {
+                    "workflow_id": job["id"],
+                    "workflow_name": job.get("name", "Workflow"),
+                    "node_identifier": str(identifier),
+                }
+                if not ready(child):
+                    child = self.wait(child_path, 1800)
+                kind = (
+                    "job_template"
+                    if child.get("type") == "job"
+                    else child.get("type", "supporting_update")
+                )
+                child_passed = self.record_job(
                     child, target, kind, require_hosts=child.get("type") == "job"
                 )
-                and passed
-            )
-            if child.get("type") == "workflow_job":
-                passed = self.workflow_children(child) and passed
+                if child.get("type") == "workflow_job":
+                    child_passed = self.workflow_children(child) and child_passed
+                passed = child_passed and passed
+            except ControllerError as error:
+                if not any(
+                    row.get("workflow_id") == job["id"]
+                    and row.get("node_identifier") == str(identifier)
+                    and row.get("kind") == "workflow_node"
+                    for row in self.report["cases"]
+                ):
+                    self.case(
+                        target or str(identifier),
+                        "failed",
+                        "workflow_node",
+                        workflow_id=job["id"],
+                        workflow_name=job.get("name", "Workflow"),
+                        node_identifier=str(identifier),
+                        summary="Could not collect this workflow child: " + str(error),
+                    )
+                if target in self.report["coverage"]:
+                    self.report["coverage"][target] = "failed"
+                passed = False
+        if not passed:
+            self.recorded_results[job["url"]] = False
+            for row in self.report["cases"]:
+                if row.get("job_id") == job["id"]:
+                    row.update(
+                        status="failed",
+                        summary="Workflow execution or child observation failed; inspect its child results.",
+                    )
+            if job.get("name") in self.report["coverage"]:
+                self.report["coverage"][job["name"]] = "failed"
         return passed
 
     def launch(
@@ -1091,10 +1221,28 @@ class Runner:
         result = self.wait(update["url"], 900)
         return self.record_job(result, name, "inventory_update")
 
+    def workflow_prerequisites(self, job, targets):
+        definition = next(
+            row for row in self.graph["workflows"] if row["name"] == job["name"]
+        )
+        required = {
+            node["identifier"]
+            for node in definition["nodes"]
+            if node["target"] in targets
+        }
+        passed = {
+            row.get("node_identifier")
+            for row in self.report["cases"]
+            if row.get("workflow_id") == job["id"]
+            and row.get("job_id")
+            and row["status"] == "passed"
+        }
+        return bool(required) and required <= passed
+
     def cloud(self, deploy_only=False):
         self.cloud_started = True
         self.checkpoint()
-        ok, _ = self.launch(
+        ok, job = self.launch(
             "Deploy Cloud Stack in AWS",
             {
                 "create_vm_aws_region": self.args.region,
@@ -1105,7 +1253,15 @@ class Runner:
             workflow=True,
             timeout=5400,
         )
-        if not ok or not self.sync_inventory("AWS Inventory"):
+        provisioned = ok or self.workflow_prerequisites(
+            job,
+            {
+                "Cloud | AWS | Create VPC",
+                "Cloud | AWS | Create Keypair",
+                "Cloud | AWS | Create VM",
+            },
+        )
+        if not provisioned or not self.sync_inventory("AWS Inventory"):
             return False
         inventory = self.api.unique(
             "inventories", "Ansible Product Demos Inventory", self.org
@@ -1146,7 +1302,7 @@ class Runner:
     def network(self, deploy_only=False):
         self.network_started = True
         self.checkpoint()
-        ok, _ = self.launch(
+        ok, job = self.launch(
             "NETWORK | Deploy Containerlab Stack",
             {
                 "clab_aws_region": self.args.region,
@@ -1157,7 +1313,14 @@ class Runner:
             workflow=True,
             timeout=7200,
         )
-        if not ok:
+        provisioned = ok or self.workflow_prerequisites(
+            job,
+            {
+                "NETWORK | Containerlab | Provision Hypervisor",
+                "NETWORK | Containerlab | Deploy Topology",
+            },
+        )
+        if not provisioned:
             return False
         if not self.sync_inventory("ContainerLab Hypervisor"):
             return False
@@ -1172,16 +1335,8 @@ class Runner:
         self.phase = "cleanup"
         # Cleanup has a separate time budget after the test budget expires.
         self.deadline = self.clock() + 3600
-        quiescent = True
-        for path in list(self.active):
-            try:
-                if self.api.get(path).get("status") in TERMINAL:
-                    self.active.discard(path)
-                    continue
-                self.api.post(path + "cancel/")
-                self.wait(path, 180)
-            except ControllerError:
-                quiescent = False
+        self.report["metadata"]["state"] = "finalizing"
+        quiescent = self.settle_jobs()
         if (
             (self.baseline_passed or not self.fixture_guard)
             and (self.cloud_started or self.network_started or self.pending_cleanup)
@@ -1253,6 +1408,15 @@ class Runner:
                     "summary": "Active jobs could not be stopped; automatic deletion refused.",
                 }
             )
+        quiescent = self.settle_jobs() and quiescent
+        if not quiescent:
+            self.report["cleanup"].append(
+                {
+                    "resource": "Controller job completion",
+                    "status": "failed",
+                    "summary": "Owned jobs or workflow children remain active or unverified; Controller bindings and temporary resources are retained.",
+                }
+            )
         restored = quiescent
         if quiescent:
             for path, snapshot in reversed(self.snapshots):
@@ -1275,6 +1439,7 @@ class Runner:
                 "status": "passed" if restored else "failed",
             }
         )
+        quiescent = self.settle_jobs() and quiescent
         for resource in reversed(self.created) if quiescent else []:
             if (
                 resource["kind"] == "inventories"
@@ -1304,7 +1469,7 @@ class Runner:
                         "summary": str(error),
                     }
                 )
-        failed_cleanup = any(
+        failed_cleanup = not quiescent or any(
             row["status"] == "failed" for row in self.report["cleanup"]
         )
         if self.lease and not failed_cleanup:
@@ -1322,7 +1487,6 @@ class Runner:
                     "summary": "Reconcile cleanup before another run; see ledger.json.",
                 }
             )
-        self.report["metadata"]["finished"] = now()
         self.checkpoint()
 
     def run(self):
@@ -1407,6 +1571,23 @@ class Runner:
                 self.checkpoint()
             if self.args.profile == "catalog":
                 Catalog(self).complete_coverage()
+            if self.active or self.observer.unresolved:
+                self.report["metadata"].pop("finished", None)
+                self.report["metadata"].update(state="incomplete", runner_stopped=now())
+                if not any(
+                    row.get("resource") == "Controller job completion"
+                    for row in self.report["cleanup"]
+                ):
+                    self.report["cleanup"].append(
+                        {
+                            "resource": "Controller job completion",
+                            "status": "failed",
+                            "summary": "The report is incomplete because owned jobs remain active or unverified.",
+                        }
+                    )
+            else:
+                self.report["metadata"].update(state="finished", finished=now())
+            self.checkpoint()
         return (
             1
             if any(

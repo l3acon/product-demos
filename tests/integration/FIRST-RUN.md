@@ -334,3 +334,37 @@ rather than the deprecated top-level `tenancy` argument, which is removed in
 newer AWS collection releases. Unsupported-argument diagnostics
 retain only module/parameter names present in the candidate source; invocation
 values and AWS credential fields are never copied to the report.
+
+## Workflow coverage and report completion
+
+Templates assigned to an available workflow are tested through that workflow,
+including members scheduled later in the dependency graph. The runner does not
+launch extra standalone copies for coverage. Every Controller-created child job
+is recorded with its workflow ID and node identifier; repeated nodes such as the
+five VM creations remain distinct executions. Failed child results remain failed,
+and untaken conditional branches remain unexecuted. Workflow members of externally
+blocked workflows can still run standalone when they have an executable scenario.
+
+The observer follows each node's `related.job` URL. Controller's `unified_jobs`
+collection supports list queries; a guessed per-ID detail URL causes HTTP 404.
+Nested workflows, pending scheduler nodes, child jobs and delayed task events must
+settle before the parent execution is considered accounted for. A failed child
+does not stop observation of siblings or independent scenarios.
+
+Reports are written throughout the run as checkpoints. The heading now distinguishes
+**Running**, **Finalizing**, **Finished**, and **Incomplete**. A report is finalized
+only after owned jobs and their event processing have settled. Active or unverified
+children are listed explicitly; cleanup, source/EE restoration and credential deletion
+wait for completion. If completion cannot be verified, the report is incomplete,
+the lease/bindings are retained, and Quay publication is refused.
+
+Ordering-only dependencies use `after_completion`: AD follows Windows utilities,
+ACME follows Linux utilities, and patching follows both lanes and their optional
+consumers. Failures in those utility tests remain in the report but do not suppress
+independent scenarios. Successful cloud provisioning and subscription prerequisites
+remain required where the later jobs actually depend on them.
+
+Cloud fixture readiness is separate from workflow test success: all required
+provisioning nodes must pass and the five hosts must be present after inventory
+sync. An auxiliary VPC report failure still fails the workflow test, but does not
+suppress consumers of a successfully provisioned fixture. Both results are recorded.

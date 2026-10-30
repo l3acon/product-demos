@@ -64,6 +64,12 @@ def verified_plan(repository, run_id, attempt, run, jobs, report, quay_repositor
     ):
         raise PromotionError("The selected integration test attempt has not completed")
     metadata = report.get("metadata", {})
+    if metadata.get("state") in ("running", "finalizing", "incomplete") or report.get(
+        "pending_jobs"
+    ):
+        raise PromotionError(
+            "The integration report still has active or unverified jobs"
+        )
     revision, image = metadata.get("candidate_commit", ""), metadata.get(
         "candidate_image", ""
     )

@@ -47,9 +47,63 @@ class Catalog:
             row["id"]: row for row in runner.report.setdefault("scenarios", [])
         }
         self.public_key = None
+        selected = {
+            step["template"]
+            for scenario in runner.graph["scenarios"]
+            if scenario["id"] not in UNAVAILABLE and scenario["id"] not in CLEANUPS
+            for step in scenario["steps"]
+            if "template" in step
+        }
+        self.workflow_owners = {}
+        definitions = {
+            workflow["name"]: workflow for workflow in runner.graph["workflows"]
+        }
 
-    def result(self, identifier, outcome, reason=""):
+        def children(name, ancestors=()):
+            if name in ancestors:
+                raise ControllerError("The execution plan contains a workflow cycle")
+            for node in definitions[name]["nodes"]:
+                self.workflow_owners.setdefault(node["target"], set()).add(name)
+                if node["target"] in definitions:
+                    children(node["target"], (*ancestors, name))
+
+        for name in selected & definitions.keys():
+            children(name)
+
+    def reuse_workflow(self, name):
+        """A workflow member is never launched just to duplicate test coverage."""
+        rows = [
+            row
+            for row in self.r.report["cases"]
+            if row["name"] == name and row.get("job_id") and row.get("workflow_id")
+        ]
+        owners = self.workflow_owners.get(name, set())
+        if not rows and not owners:
+            return None
+        outcome = (
+            "passed"
+            if rows and all(row["status"] == "passed" for row in rows)
+            else "failed"
+            if rows
+            else "deferred"
+        )
+        self.r.report.setdefault("workflow_reuse", {})[name] = {
+            "workflows": sorted(owners | {row["workflow_name"] for row in rows}),
+            "job_ids": sorted({row["job_id"] for row in rows}),
+            "status": outcome,
+            "summary": "Use the actual workflow child results; no standalone test launch."
+            if rows
+            else "Scheduled only through its workflow; an untaken branch is not passing coverage.",
+        }
+        self.r.checkpoint()
+        # Deferral allows independent utility setup to reach a later workflow
+        # (e.g. Windows utilities precede AD); it is never counted as a pass.
+        return outcome != "failed"
+
+    def result(self, identifier, outcome, reason="", ready=None):
         row = {"id": identifier, "status": outcome, "summary": reason}
+        if ready is not None:
+            row["ready"] = ready
         self.results[identifier] = row
         self.r.report["scenarios"] = list(self.results.values())
         self.r.checkpoint()
@@ -107,6 +161,9 @@ class Catalog:
 
     def execute(self, name, bindings):
         r = self.r
+        reused = self.reuse_workflow(name)
+        if reused is not None:
+            return reused
         spec = self.templates[name]
         r.phase = {
             "linux": "linux",
@@ -153,7 +210,9 @@ class Catalog:
             failed_needs = [
                 name
                 for name in scenario.get("needs", [])
-                if self.results.get(name, {}).get("status") != "passed"
+                if not self.results.get(name, {}).get(
+                    "ready", self.results.get(name, {}).get("status") == "passed"
+                )
             ]
             if failed_needs:
                 self.result(
@@ -189,7 +248,7 @@ class Catalog:
                 )
                 continue
             if identifier in ("peer-network", "transit-network"):
-                if self.results.get("cloud-stack", {}).get("status") != "passed":
+                if not self.results.get("cloud-stack", {}).get("ready", False):
                     self.result(
                         identifier,
                         "blocked",
@@ -247,8 +306,14 @@ class Catalog:
                     )
                 self.result(
                     identifier,
-                    "passed" if ok else "failed",
-                    "Deployment workflow, child jobs and inventory readiness recorded.",
+                    "passed"
+                    if ok
+                    and r.report["coverage"]["Deploy Cloud Stack in AWS"] == "passed"
+                    else "failed",
+                    "Cloud fixture inventory is ready; recorded workflow failures remain failures while consumers continue."
+                    if ok
+                    else "Cloud provisioning or five-host inventory readiness failed; fixture consumers are blocked.",
+                    ready=bool(ok),
                 )
                 continue
             if identifier == "containerlab":
@@ -293,12 +358,14 @@ class Catalog:
             self.result(
                 identifier,
                 "passed" if ok else "failed",
-                "Controller template executions recorded; planned external functional assertions are not claimed.",
+                "Standalone executions recorded; workflow members are scheduled only through their workflows. Planned external functional assertions are not claimed.",
             )
 
     def complete_coverage(self):
         """Make missing execution visible in JSON, HTML, JUnit and the run log."""
         r = self.r
+        for name in list(r.report.get("workflow_reuse", {})):
+            self.reuse_workflow(name)
         for identifier, result in list(self.results.items()):
             if result["status"] == "deferred":
                 names = [
@@ -321,6 +388,12 @@ class Catalog:
                 continue
             assignments = r.graph["coverage"][name]
             reasons = []
+            if name in self.workflow_owners:
+                reasons.append(
+                    "This template is tested only through "
+                    + ", ".join(sorted(self.workflow_owners[name]))
+                    + "; its workflow branch did not execute. No duplicate standalone test was launched."
+                )
             for assignment in assignments:
                 result = self.results.get(assignment["scenario"])
                 if result and result["status"] == "blocked":

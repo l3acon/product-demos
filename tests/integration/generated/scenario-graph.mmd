@@ -37,14 +37,18 @@ flowchart TD
   cloud_stack --> subscriptions
   subscriptions --> linux_general
   cloud_stack --> windows_general
-  windows_general --> active_directory
+  cloud_stack --> active_directory
+  windows_general -. terminal .-> active_directory
   subscriptions --> insights
-  linux_general --> acme
+  subscriptions --> acme
+  linux_general -. terminal .-> acme
   acme --> event_driven_drift
   subscriptions --> mattermost
   mattermost --> orchestrator
-  linux_general --> cloud_patching
-  windows_general --> cloud_patching
+  subscriptions --> cloud_patching
+  cloud_stack --> cloud_patching
+  linux_general -. terminal .-> cloud_patching
+  windows_general -. terminal .-> cloud_patching
   active_directory -. terminal .-> cloud_patching
   insights -. terminal .-> cloud_patching
   event_driven_drift -. terminal .-> cloud_patching

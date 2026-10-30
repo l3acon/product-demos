@@ -182,15 +182,17 @@ class FakeController:
         if path.endswith("survey_spec/"):
             return {"spec": []}
         if "/unified_jobs/" in path:
-            identifier = int(path.rstrip("/").split("/")[-1])
-            return next(
-                copy.deepcopy(row)
-                for row in self.objects.values()
-                if row["id"] == identifier
-            )
+            raise ControllerError("Controller API GET returned HTTP 404")
         return copy.deepcopy(self.objects[path])
 
     def list(self, path):
+        if "/unified_jobs/?id=" in path:
+            identifier = int(path.split("?id=")[1].split("&")[0])
+            return [
+                copy.deepcopy(row)
+                for row in self.objects.values()
+                if row["id"] == identifier
+            ]
         if "workflow_nodes/" in path:
             return copy.deepcopy(
                 self.objects[path.split("workflow_nodes/")[0]].get("nodes", [])
@@ -224,6 +226,9 @@ class FakeController:
                     "veos4",
                     "vjunos3",
                     "clab-hypervisor",
+                    "dc01",
+                    "winston",
+                    "winthrop",
                 )
             ]
         if "hosts/" in path:
@@ -363,6 +368,7 @@ class FakeController:
                             "unified_job_template": {"name": node["target"]}
                         },
                         "job": None,
+                        "do_not_run": True,
                     }
                     if not incoming or any(
                         edge["condition"] != "failure" for edge in incoming
@@ -386,7 +392,15 @@ class FakeController:
                                 )["scm_revision"],
                             },
                         )
+                        if (
+                            template["name"] == "Deploy Cloud Stack in AWS"
+                            and not self.cloud_ok
+                            and node["target"] == "Cloud | AWS | Create VM"
+                        ):
+                            self.objects[child["url"]]["status"] = "failed"
                         item["job"] = child["id"]
+                        item["do_not_run"] = False
+                        item["related"] = {"job": child["url"]}
                     nodes.append(item)
                 self.objects[row["url"]]["nodes"] = nodes
                 row = self.get(row["url"])

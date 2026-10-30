@@ -208,22 +208,56 @@ def dashboard(report):
         )
     )
     incomplete = any(row.get("status") == "blocked" for row in rows)
-    outcome = (
-        "failed"
-        if failures or cleanup_failed
-        else "blocked"
-        if complete and incomplete
-        else "passed"
-        if complete
-        else "running"
-    )
+    state = metadata.get("state")
+    pending = report.get("pending_jobs", [])
+    unsettled = state == "incomplete" or bool(pending) and state == "finished"
+    if state in ("running", "finalizing"):
+        complete = False
+        outcome = "running"
+    elif unsettled:
+        complete = False
+        outcome = "blocked"
+    else:
+        outcome = (
+            "failed"
+            if failures or cleanup_failed
+            else "blocked"
+            if complete and incomplete
+            else "passed"
+            if complete
+            else "running"
+        )
     title = "EE build report" if build_only else "APD integration report"
     headline = {
         "failed": "Run failed — inspect the highlighted checks",
         "passed": "Run completed successfully",
-        "running": "Run in progress",
-        "blocked": "Run incomplete — some templates could not execute",
+        "running": "Run in progress — failures recorded"
+        if failures
+        else "Run in progress",
+        "blocked": "Report incomplete — Controller jobs remain active or unverified"
+        if unsettled
+        else "Run incomplete — some templates could not execute",
     }[outcome]
+    if state == "finalizing":
+        headline = "Finalizing — waiting for jobs and cleanup"
+    pending_rows = "".join(
+        f'<li><strong>{e(row.get("name", "Controller job"))}</strong> · job {e(row.get("job_id", "unknown"))} · {e(row.get("controller_status", "unverified"))}'
+        + (" · task events pending" if row.get("events_pending") else "")
+        + (
+            " · child observation incomplete"
+            if row.get("observation_incomplete")
+            else ""
+        )
+        + "</li>"
+        for row in pending
+    )
+    lifecycle_note = (
+        '<section class="lifecycle-note"><h2>Execution is not yet fully accounted for</h2><p>This is an interim or incomplete report. Cleanup and binding restoration must wait for owned jobs and workflow children.</p><ul>'
+        + pending_rows
+        + "</ul></section>"
+        if pending or unsettled
+        else ""
+    )
     counts = Counter(status(row.get("status")) for row in rows + cleanup)
     failure_count = len(failures) + sum(
         status(row.get("status")) in BAD or row.get("status") == "retained"
@@ -345,8 +379,28 @@ def dashboard(report):
             categories = ", ".join(row.get("failure_categories", [])) or "None"
             details = event_table(report, row.get("events", []))
             evidence = e(row.get("ee_provenance", "Not a Controller execution"))
+            parent_url = job_url(
+                report,
+                {"job_id": row.get("workflow_id"), "kind": "workflow_job_template"},
+            )
+            parent_note = (
+                '<p class="workflow-context">Workflow: '
+                + link(
+                    parent_url,
+                    row.get("workflow_name", "Parent workflow")
+                    + " · "
+                    + str(row["workflow_id"]),
+                )
+                + " · node "
+                + e(row.get("node_identifier", ""))
+                + " · Controller status: "
+                + e(row.get("controller_status", row["status"]))
+                + "</p>"
+                if parent_url
+                else ""
+            )
             cases.append(
-                f'<details class="case {status(row["status"])}" id="case-{index}" {"open" if status(row["status"]) in BAD else ""}><summary>{badge(row["status"])}<strong>{e(row["name"])}</strong><span class="case-duration">{duration(row.get("elapsed"))}</span></summary><div class="case-body"><p>{e(row.get("summary", ""))}</p><div class="case-meta"><span>EE: {evidence}</span><span>Hosts: {e(row.get("hosts", "—"))}</span><span>Category: {e(categories)}</span></div>{job_link}{details}</div></details>'
+                f'<details class="case {status(row["status"])}" id="case-{index}" {"open" if status(row["status"]) in BAD else ""}><summary>{badge(row["status"])}<strong>{e(row["name"])}</strong><span class="case-duration">{duration(row.get("elapsed"))}</span></summary><div class="case-body">{parent_note}<p>{e(row.get("summary", ""))}</p><div class="case-meta"><span>EE: {evidence}</span><span>Hosts: {e(row.get("hosts", "—"))}</span><span>Category: {e(categories)}</span></div>{job_link}{details}</div></details>'
             )
         if cases:
             executions.append(
@@ -414,6 +468,17 @@ def dashboard(report):
         if metadata.get("profile") == "catalog"
         else "This profile exercises a subset of the catalog. Not-selected cases are not counted as passing. OpenShift is excluded."
     )
+    reuse_rows = "".join(
+        f'<tr><td>{e(name)}</td><td>{e(", ".join(row.get("workflows", [])))}</td><td>{e(", ".join(map(str, row.get("job_ids", []))) or "Branch not executed")}</td><td>{badge(row["status"])}</td></tr>'
+        for name, row in sorted(report.get("workflow_reuse", {}).items())
+    )
+    reuse_panel = (
+        '<details class="panel" open><summary>Workflow coverage · duplicate standalone launches avoided</summary><p>These templates run through their workflows. Failures remain failures; untaken branches are not passing coverage.</p><div class="table-scroll"><table><thead><tr><th>Template</th><th>Workflow</th><th>Actual child jobs</th><th>Result</th></tr></thead><tbody>'
+        + reuse_rows
+        + "</tbody></table></div></details>"
+        if reuse_rows
+        else ""
+    )
     stylesheet = Path(__file__).with_name("report.css").read_text()
     advanced = e(
         json.dumps(
@@ -424,9 +489,9 @@ def dashboard(report):
 <body>{banner}<header><span class="brand">APD <span>/ Integration</span></span><nav><a href="#failures">Failures</a><a href="#executions">Executions</a><a href="#runtime">EE versions</a><a href="#cleanup">Cleanup</a></nav></header>
 <main><section class="hero {outcome}"><div class="eyebrow">{e(title)} · {e(metadata.get('run_id', 'Build evidence'))}</div><div class="hero-title"><h1>{headline}</h1>{badge(outcome)}</div><p>{e(report.get('scope', ''))}</p><div class="hero-meta"><span>Profile <b>{e(metadata.get('profile', 'EE build / amd64'))}</b></span><span>Commit <code>{e(str(metadata.get('candidate_commit', 'pending'))[:12])}</code></span><span>Started <b>{e(display_time(metadata.get('started')))}</b></span></div></section>
 <div class="metrics"><article><span>Controller jobs</span><strong>{job_count}</strong></article><article><span>Passed checks</span><strong class="green">{counts['passed']}</strong></article><article><span>Failed checks</span><strong class="{'red' if failure_count else ''}">{failure_count}</strong></article><article><span>Catalog templates reached</span><strong>{reached}<small> / {len(coverage)}</small></strong></article></div>
-{failure_panel}<section class="image-card"><div class="eyebrow">Image under test</div><h2>{source}</h2><code class="image-ref">{e(image)}</code><div class="version-chips">{chips}</div><p class="muted">{e(metadata.get('runtime_digest', 'Build digest and source checksums are recorded in the evidence.'))}</p>{restoration_note}</section>
+{lifecycle_note}{failure_panel}<section class="image-card"><div class="eyebrow">Image under test</div><h2>{source}</h2><code class="image-ref">{e(image)}</code><div class="version-chips">{chips}</div><p class="muted">{e(metadata.get('runtime_digest', 'Build digest and source checksums are recorded in the evidence.'))}</p>{restoration_note}</section>
 <section><div class="section-heading"><h2>Run progression</h2><span>Status includes failure and skipped phases</span></div><ol class="phases {'build-phases' if build_only else ''}">{phases}</ol></section>
-{scenario_panel}<div id="executions">{''.join(executions)}</div>
+{scenario_panel}{reuse_panel}<div id="executions">{''.join(executions)}</div>
 <section id="runtime"><div class="section-heading"><h2>Execution environment versions</h2>{badge('passed' if runtime.get('compatible') is True else 'failed' if runtime.get('compatible') is False else 'not_started')}</div>{runtime_fail}<div class="runtime-checks">{checks}</div><details class="panel" {'open' if runtime.get('compatible') is False else ''}><summary>Collection inventory · {len(runtime.get('collections', []))} collections · compare CI build and Controller</summary><div class="table-scroll"><table><thead><tr><th>Collection</th><th>CI build</th><th>Observed</th><th>Source constraint</th><th>Compatibility</th></tr></thead><tbody>{collection_rows}</tbody></table></div></details></section>
 <section id="cleanup"><div class="section-heading"><h2>Cleanup and restoration</h2>{badge('failed' if cleanup_failed else 'passed' if cleanup else 'not_started')}</div><div class="panel table-scroll"><table><thead><tr><th>Outcome</th><th>Resource / action</th></tr></thead><tbody>{cleanup_rows or '<tr><td colspan="2">No cleanup result recorded yet.</td></tr>'}</tbody></table></div></section>
 <details class="panel"><summary>Full catalog coverage · {reached} / {len(coverage)} reached</summary><p class="muted">{coverage_note}</p><div class="table-scroll"><table><thead><tr><th>Template</th><th>Coverage</th></tr></thead><tbody>{coverage_rows}</tbody></table></div></details>

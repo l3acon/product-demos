@@ -92,6 +92,11 @@ class PromotionTests(unittest.TestCase):
         self.jobs[0]["name"] = "Approved APD template integration test"
         self.assertEqual(self.plan()["source_image"], self.image)
 
+    def test_report_with_pending_controller_jobs_cannot_be_published(self):
+        self.report["pending_jobs"] = [{"job_id": 10, "controller_status": "running"}]
+        with self.assertRaisesRegex(PromotionError, "active or unverified"):
+            self.plan()
+
     def test_sample_external_wrong_revision_and_wrong_image_are_refused(self):
         original = copy.deepcopy(self.report)
         for mutation in (

@@ -90,10 +90,8 @@ class CatalogTests(unittest.TestCase):
             names.index("Deploy Cloud Stack in AWS"),
             names.index("LINUX | Register RHEL with RHSM"),
         )
-        self.assertLess(
-            names.index("WINDOWS | Test Connectivity"),
-            names.index("Setup Active Directory Domain"),
-        )
+        self.assertNotIn("WINDOWS | Test Connectivity", names)
+        self.assertIn("Setup Active Directory Domain", names)
         self.assertLess(
             names.index("Cloud | AWS | Delete Peer Infrastructure"),
             names.index("Cloud | AWS | Create Transit Infrastructure"),
@@ -127,12 +125,15 @@ class CatalogTests(unittest.TestCase):
         self.assertIn("LINUX | Podman Webserver", self.launches())
         self.assertIn("WINDOWS | Chocolatey install specific", self.launches())
         self.assertIn("NETWORK | Backup", self.launches())
-        self.assertNotIn("Setup Active Directory Domain", self.launches())
+        self.assertIn("Setup Active Directory Domain", self.launches())
+        self.assertIn(
+            "Infrastructure | Configuration management - ACME App - Setup",
+            self.launches(),
+        )
+        self.assertIn("Patch Cloud Stack in AWS", self.launches())
         for name in self.api.fail_names:
             self.assertEqual(runner.report["coverage"][name], "failed")
-        self.assertEqual(
-            runner.report["coverage"]["WINDOWS | AD | New User"], "blocked"
-        )
+        self.assertEqual(runner.report["coverage"]["WINDOWS | AD | New User"], "passed")
 
     def test_failed_cloud_blocks_its_consumers_but_network_still_runs_and_both_clean_up(
         self,
@@ -146,6 +147,38 @@ class CatalogTests(unittest.TestCase):
         self.assertIn("Destroy Cloud Stack in AWS", self.launches())
         self.assertIn("NETWORK | Destroy Containerlab Stack", self.launches())
         self.assertEqual(runner.report["coverage"]["LINUX | Fact Scan"], "blocked")
+
+    def test_auxiliary_workflow_failure_does_not_hide_successfully_provisioned_fixture(
+        self,
+    ):
+        original = self.api.post
+
+        def post(path, data=None):
+            result = original(path, data)
+            if (
+                path.endswith("launch/")
+                and self.api.get(path[:-7])["name"] == "Deploy Cloud Stack in AWS"
+            ):
+                for node in self.api.objects[result["url"]]["nodes"]:
+                    if (
+                        node.get("job")
+                        and node["summary_fields"]["unified_job_template"]["name"]
+                        == "Cloud | AWS | VPC Report"
+                    ):
+                        self.api.objects[node["related"]["job"]]["status"] = "failed"
+            return result
+
+        runner = self.runner()
+        with patch.object(self.api, "post", side_effect=post):
+            self.assertEqual(runner.run(), 1)
+        self.assertEqual(
+            runner.report["coverage"]["Cloud | AWS | VPC Report"], "failed"
+        )
+        self.assertEqual(
+            runner.report["coverage"]["Deploy Cloud Stack in AWS"], "failed"
+        )
+        self.assertIn("LINUX | Fact Scan", self.launches())
+        self.assertIn("Patch Cloud Stack in AWS", self.launches())
 
     def test_cleanup_launch_error_does_not_skip_other_teardown(self):
         self.args.profile = "baseline-smoke"
@@ -188,9 +221,7 @@ class CatalogTests(unittest.TestCase):
             ):
                 for node in self.api.objects[result["url"]]["nodes"]:
                     if node.get("job"):
-                        child = self.api.get(
-                            f"/api/controller/v2/unified_jobs/{node['job']}/"
-                        )
+                        child = self.api.get(node["related"]["job"])
                         if child["name"] == "Cloud | AWS | Create VM":
                             self.api.objects[child["url"]]["status"] = "failed"
                             break
