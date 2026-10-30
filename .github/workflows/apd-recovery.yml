@@ -1,0 +1,137 @@
+---
+name: Manual APD recovery
+
+on:
+  push:
+    branches: [codex/apd-integration-ci]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Plan first; apply requires a reviewed recovery plan artifact
+        type: choice
+        options: [plan, apply]
+        default: plan
+      source:
+        description: Plan uses failed integration run-attempt; apply uses recovery-plan run-attempt
+        type: string
+        required: true
+      region:
+        type: choice
+        description: AWS region to inspect
+        options: [us-east-2, us-west-2]
+        default: us-east-2
+      keys:
+        description: Exact untagged keypair IDs approved from the plan, comma-separated
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  request:
+    if: github.repository == 'l3acon/product-demos' && (github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[apd-recovery '))
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.request.outputs.mode }}
+      source: ${{ steps.request.outputs.source }}
+      region: ${{ steps.request.outputs.region }}
+      keys: ${{ steps.request.outputs.keys }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/integration/requirements.txt
+      - name: Test recovery adapters without live access
+        run: python -m unittest discover -s tests/integration/tests
+      - id: request
+        env:
+          RECOVERY_MESSAGE: ${{ github.event.head_commit.message }}
+          REQUEST_MODE: ${{ inputs.mode }}
+          REQUEST_SOURCE: ${{ inputs.source }}
+          REQUEST_REGION: ${{ inputs.region }}
+          REQUEST_KEYS: ${{ inputs.keys }}
+          REQUEST_EVENT: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'tests/integration')
+          from recover_apd import request_from_message
+          message = os.environ['RECOVERY_MESSAGE']
+          if os.environ['REQUEST_EVENT'] == 'workflow_dispatch':
+              mode = os.environ['REQUEST_MODE']
+              message = f"[apd-recovery {mode} {os.environ['REQUEST_SOURCE']}"
+              if mode == 'plan':
+                  message += f" region={os.environ['REQUEST_REGION']}"
+              if os.environ['REQUEST_KEYS']:
+                  message += f" keys={os.environ['REQUEST_KEYS']}"
+              message += ']'
+          request = request_from_message(message)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(''.join(f'{key}={value}\n' for key, value in request.items()))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write(f"# Manual APD recovery: {request['mode']}\n\nSource: `{request['source']}`; region: `{request['region'] if request['mode'] == 'plan' else 'from reviewed plan'}`.\n\nPlan inspects the previous run and AWS using temporary isolated Controller objects. Apply cancels the reviewed APD jobs, removes only approved run-owned resources, verifies cleanup, and releases the old integration lock last. Base APD templates, project and credentials remain.\n")
+          PY
+
+  recover:
+    name: Approve manual APD recovery
+    needs: request
+    environment: apd-integration
+    concurrency:
+      group: apd-integration-preview
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/integration/requirements.txt
+      - name: Plan or apply the reviewed recovery
+        env:
+          APD_URL: ${{ secrets.APD_URL }}
+          APD_USERNAME: ${{ secrets.APD_USERNAME }}
+          APD_PASSWORD: ${{ secrets.APD_PASSWORD }}
+          APD_TOKEN: ${{ secrets.APD_TOKEN }}
+          APD_REGISTRY_USERNAME: ${{ github.actor }}
+          APD_REGISTRY_PASSWORD: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          RECOVERY_MODE: ${{ needs.request.outputs.mode }}
+          RECOVERY_SOURCE: ${{ needs.request.outputs.source }}
+          RECOVERY_REGION: ${{ needs.request.outputs.region }}
+          RECOVERY_KEYS: ${{ needs.request.outputs.keys }}
+        run: |
+          python - <<'PY'
+          import os, subprocess, sys
+          command = [sys.executable, 'tests/integration/recover_apd.py', os.environ['RECOVERY_MODE'],
+                     '--repository', os.environ['GITHUB_REPOSITORY'], '--revision', os.environ['GITHUB_SHA'],
+                     '--source', os.environ['RECOVERY_SOURCE'], '--region', os.environ['RECOVERY_REGION']]
+          for key in filter(None, os.environ['RECOVERY_KEYS'].split(',')):
+              command += ['--adopt-key', key]
+          subprocess.run(command, check=True)
+          PY
+      - name: Add recovery results to the summary
+        if: always()
+        run: |
+          if test -f integration-results/recovery/summary.md; then
+            cat integration-results/recovery/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Save plan or cleanup receipt even after failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: apd-recovery-${{ needs.request.outputs.mode == 'plan' && 'plan' || 'result' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: integration-results/recovery/
+          retention-days: 30
+          if-no-files-found: warn
+...

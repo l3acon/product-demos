@@ -32,13 +32,36 @@ def previous_evidence(repository, run_id):
 
     try:
         run = json.loads(gh(["api", f"repos/{repo}/actions/runs/{number}"]))
-        if (
-            run.get("status") != "completed"
-            or run.get("path") != ".github/workflows/apd-integration.yml"
-        ):
-            raise ControllerError(
-                "Previous integration run is active or has unexpected provenance"
-            )
+        if run.get("path") != ".github/workflows/apd-integration.yml":
+            raise ControllerError("Previous integration run has unexpected provenance")
+        if run.get("status") != "completed":
+            attempt = run_id.split("-")[1]
+            jobs = json.loads(
+                gh(
+                    [
+                        "api",
+                        f"repos/{repo}/actions/runs/{number}/attempts/{attempt}/jobs?per_page=100",
+                    ]
+                )
+            )["jobs"]
+            integration = [
+                job
+                for job in jobs
+                if job.get("name")
+                in (
+                    "Approved fresh APD smoke test",
+                    "Approved APD template integration test",
+                )
+            ]
+            if (
+                len(integration) != 1
+                or integration[0].get("status") != "completed"
+                or integration[0].get("conclusion")
+                not in ("success", "failure", "cancelled", "timed_out")
+            ):
+                raise ControllerError(
+                    "Previous APD integration job is still active; recovery refused"
+                )
         with tempfile.TemporaryDirectory() as directory:
             gh(
                 [

@@ -1,0 +1,29 @@
+---
+- name: Inspect or clean resources owned by one integration run
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: '{{ ansible_playbook_python }}'
+  tasks:
+    - name: Run isolated AWS recovery using the EE Python environment
+      ansible.builtin.command:
+        argv:
+          - '{{ ansible_playbook_python }}'
+          - '{{ playbook_dir }}/recovery_aws.py'
+        stdin: '{{ ci_recovery_request | to_json }}'
+      register: ci_recovery_result
+      changed_when: ci_recovery_request.mode == 'apply'
+      failed_when: false
+      no_log: true
+
+    - name: Publish sanitized recovery results
+      ansible.builtin.set_stats:
+        data:
+          ci_recovery: '{{ ci_recovery_result.stdout | from_json }}'
+        per_host: false
+
+    - name: Require successful recovery operation
+      ansible.builtin.assert:
+        that: (ci_recovery_result.stdout | from_json).ok | bool
+        fail_msg: AWS recovery did not complete; inspect the sanitized recovery report.

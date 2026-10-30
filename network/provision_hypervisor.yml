@@ -124,6 +124,8 @@
         name: "{{ clab_aws_keypair_name }}"
         region: "{{ clab_aws_region }}"
         state: present
+        tags:
+          owner: '{{ aws_owner_tag }}'
       register: clab_keypair
 
     - name: Save private key to AAP credential  # noqa: no-handler

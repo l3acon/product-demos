@@ -237,6 +237,7 @@ class Runner:
                 "candidate_commit": args.revision,
                 "candidate_image": args.image,
                 "repository": args.repository,
+                "region": args.region,
                 "fixture_guard": "enabled" if self.fixture_guard else "disabled",
                 "state": "running",
                 "started": now(),
@@ -465,6 +466,13 @@ class Runner:
     def configure(self):
         self.org = self.api.unique("organizations", "Ansible Product Demos (APD)")["id"]
         self.project = self.api.unique("projects", "Ansible Product Demos", self.org)
+        if any(
+            row["name"] == "APD recovery lease" and row.get("organization") == self.org
+            for row in self.api.collection("inventories")
+        ):
+            raise ControllerError(
+                "Manual APD recovery is active; wait for its completion report before testing"
+            )
         existing_leases = [
             row
             for row in self.api.collection("inventories")

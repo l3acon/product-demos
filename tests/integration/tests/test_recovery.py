@@ -202,20 +202,78 @@ class RecoveryTests(unittest.TestCase):
 
     def test_prior_workflow_must_be_completed_before_artifact_download(self):
         with patch("recovery.subprocess.run") as command:
-            command.return_value = Mock(
-                returncode=0,
-                stdout=json.dumps(
-                    {
-                        "status": "in_progress",
-                        "path": ".github/workflows/apd-integration.yml",
-                    }
+            command.side_effect = [
+                Mock(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "status": "in_progress",
+                            "path": ".github/workflows/apd-integration.yml",
+                        }
+                    ),
                 ),
-            )
+                Mock(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "jobs": [
+                                {
+                                    "name": "Approved APD template integration test",
+                                    "status": "running",
+                                }
+                            ]
+                        }
+                    ),
+                ),
+            ]
             with self.assertRaisesRegex(ControllerError, "active"):
                 previous_evidence(
                     "https://github.com/l3acon/product-demos", self.run_id
                 )
-            self.assertEqual(command.call_count, 1)
+            self.assertEqual(command.call_count, 2)
+
+    def test_pending_quay_job_does_not_block_reading_finished_apd_evidence(self):
+        report = {"sample": False, "metadata": {"candidate_commit": "b" * 40}}
+
+        def command(args, **kwargs):
+            if "download" in args:
+                directory = Path(args[args.index("--dir") + 1])
+                (directory / "ledger.json").write_text(json.dumps(self.ledger))
+                (directory / "report.json").write_text(json.dumps(report))
+                return Mock(returncode=0, stdout="")
+            if "/attempts/" in args[-1]:
+                return Mock(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "jobs": [
+                                {
+                                    "name": "Approved APD template integration test",
+                                    "status": "completed",
+                                    "conclusion": "failure",
+                                },
+                                {"name": "Quay publish", "status": "waiting"},
+                            ]
+                        }
+                    ),
+                )
+            return Mock(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "status": "pending",
+                        "path": ".github/workflows/apd-integration.yml",
+                        "head_sha": "b" * 40,
+                    }
+                ),
+            )
+
+        with patch("recovery.subprocess.run", side_effect=command):
+            ledger, observed = previous_evidence(
+                "https://github.com/l3acon/product-demos", self.run_id
+            )
+        self.assertEqual(ledger["owner"], self.owner)
+        self.assertEqual(observed["metadata"]["candidate_commit"], "b" * 40)
 
     def test_evidence_must_match_the_observed_run(self):
         self.report["metadata"]["run_id"] = "another-run"

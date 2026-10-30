@@ -227,7 +227,14 @@ def dashboard(report):
             if complete
             else "running"
         )
-    title = "EE build report" if build_only else "APD integration report"
+    manual_recovery = metadata.get("profile") == "manual-recovery"
+    title = (
+        "APD recovery report"
+        if manual_recovery
+        else "EE build report"
+        if build_only
+        else "APD integration report"
+    )
     headline = {
         "failed": "Run failed — inspect the highlighted checks",
         "passed": "Run completed successfully",
@@ -358,7 +365,11 @@ def dashboard(report):
         if failure_cards
         else '<section class="success-note">'
         + (
-            "✓ No failures reported. Cleanup is complete."
+            "Plan complete. No previous-run resources have been deleted."
+            if outcome == "passed"
+            and manual_recovery
+            and metadata.get("operation") == "plan"
+            else "✓ No failures reported. Cleanup is complete."
             if outcome == "passed"
             else "Some templates could not execute. Review blocked cases and scenario prerequisites below."
             if outcome == "blocked"
@@ -479,21 +490,150 @@ def dashboard(report):
         if reuse_rows
         else ""
     )
+    recovery = report.get("recovery_plan")
+    recovery_panel = ""
+    if recovery:
+        aws = recovery["aws"]
+        action_rows = []
+        for label, items in (
+            (
+                "Terminate run-owned EC2 instances",
+                [item["id"] + " · " + item["name"] for item in aws["instances"]],
+            ),
+            ("Delete owned VPC networking", [item["id"] for item in aws["vpcs"]]),
+            (
+                "Delete owned keypairs",
+                [item["id"] + " · " + item["name"] for item in aws["keys"]],
+            ),
+            (
+                "Untagged keys: explicit ID adoption required",
+                [item["id"] + " · " + item["name"] for item in aws["untagged_keys"]],
+            ),
+            (
+                "Delete exact run report bucket",
+                [aws["bucket"]] if aws.get("bucket") else [],
+            ),
+            (
+                "Cancel / verify reviewed APD jobs",
+                [str(item["id"]) + " · " + item["status"] for item in recovery["jobs"]],
+            ),
+            (
+                "Remove temporary Controller objects",
+                [
+                    item["kind"] + "/" + str(item["id"]) + " · " + item["name"]
+                    for item in recovery["objects"]
+                ],
+            ),
+            (
+                "Remove run-owned inventory hosts",
+                [
+                    str(item["id"]) + " · " + item["name"]
+                    for item in recovery.get("hosts", [])
+                ],
+            ),
+            ("Release integration lock last", [str(recovery["lease_id"])]),
+        ):
+            action_rows.append(
+                "<tr><td><strong>"
+                + e(label)
+                + "</strong></td><td>"
+                + "<br>".join(e(item) for item in items)
+                + ("None found" if not items else "")
+                + "</td></tr>"
+            )
+        blockers = "".join(
+            "<li>" + e(item) + "</li>" for item in recovery.get("blockers", [])
+        )
+        recovery_panel = (
+            '<section class="panel"><div class="case-body"><h2>Recovery plan — review before apply</h2><p>Source run <b>'
+            + e(recovery["source_run"])
+            + "</b> · AWS account <code>"
+            + e(aws["account"])
+            + "</code> · region <code>"
+            + e(aws["region"])
+            + "</code></p><p>Owner <code>"
+            + e(recovery["owner"])
+            + "</code>. Planning does not delete previous-run resources. Base APD templates, project and credentials remain.</p>"
+            + (
+                '<div class="inline-failure"><strong>Blockers</strong><ul>'
+                + blockers
+                + "</ul></div>"
+                if blockers
+                else ""
+            )
+            + '<div class="table-scroll"><table><thead><tr><th>Proposed action</th><th>Exact reviewed resources</th></tr></thead><tbody>'
+            + "".join(action_rows)
+            + "</tbody></table></div><p>Plan artifact <code>apd-recovery-plan-"
+            + e(recovery["recovery_run"])
+            + "</code></p><p>Fingerprint <code>"
+            + e(recovery["fingerprint"])
+            + "</code></p></div></section>"
+        )
+        if (
+            metadata.get("state") == "finished"
+            and metadata.get("operation", "plan") == "plan"
+        ):
+            headline = (
+                "Recovery plan has blockers"
+                if recovery.get("blockers")
+                else "Recovery plan ready for review"
+            )
+    if report.get("ready_for_test") and metadata.get("state") == "finished":
+        headline = "APD reset verified — ready for another approved test"
+    planned_count = (
+        sum(
+            len(recovery["aws"][key])
+            for key in ("instances", "vpcs", "keys", "untagged_keys")
+        )
+        + len(recovery["objects"])
+        + 1
+        if recovery
+        else 0
+    )
+    last_metric = (
+        f"<article><span>Reviewed resource IDs</span><strong>{planned_count}</strong></article>"
+        if manual_recovery
+        else f"<article><span>Catalog templates reached</span><strong>{reached}<small> / {len(coverage)}</small></strong></article>"
+    )
+    runtime_navigation = "" if manual_recovery else '<a href="#runtime">EE versions</a>'
+    if manual_recovery:
+        chips = ""
+    image_caption = (
+        "Isolated recovery execution environment"
+        if manual_recovery
+        else "Image under test"
+    )
     stylesheet = Path(__file__).with_name("report.css").read_text()
     advanced = e(
         json.dumps(
             {"metadata": metadata, "ee_build": report.get("ee_build", {})}, indent=2
         )
     )
+    phase_class = "build-phases" if build_only else ""
+    progression = (
+        ""
+        if manual_recovery
+        else f"""<section><div class="section-heading"><h2>Run progression</h2><span>Status includes failure and skipped phases</span></div><ol class="phases {phase_class}">{phases}</ol></section>"""
+    )
+    runtime_panel = (
+        ""
+        if manual_recovery
+        else f"""<section id="runtime"><div class="section-heading"><h2>Execution environment versions</h2>{badge('passed' if runtime.get('compatible') is True else 'failed' if runtime.get('compatible') is False else 'not_started')}</div>{runtime_fail}<div class="runtime-checks">{checks}</div><details class="panel" {'open' if runtime.get('compatible') is False else ''}><summary>Collection inventory · {len(runtime.get('collections', []))} collections · compare CI build and Controller</summary><div class="table-scroll"><table><thead><tr><th>Collection</th><th>CI build</th><th>Observed</th><th>Source constraint</th><th>Compatibility</th></tr></thead><tbody>{collection_rows}</tbody></table></div></details></section>"""
+    )
+    coverage_panel = (
+        ""
+        if manual_recovery
+        else f"""<details class="panel"><summary>Full catalog coverage · {reached} / {len(coverage)} reached</summary><p class="muted">{coverage_note}</p><div class="table-scroll"><table><thead><tr><th>Template</th><th>Coverage</th></tr></thead><tbody>{coverage_rows}</tbody></table></div></details>"""
+    )
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>{e(title)}</title><style>{stylesheet}</style></head>
-<body>{banner}<header><span class="brand">APD <span>/ Integration</span></span><nav><a href="#failures">Failures</a><a href="#executions">Executions</a><a href="#runtime">EE versions</a><a href="#cleanup">Cleanup</a></nav></header>
+<body>{banner}<header><span class="brand">APD <span>/ Integration</span></span><nav><a href="#failures">Failures</a><a href="#executions">Executions</a>{runtime_navigation}<a href="#cleanup">Cleanup</a></nav></header>
 <main><section class="hero {outcome}"><div class="eyebrow">{e(title)} · {e(metadata.get('run_id', 'Build evidence'))}</div><div class="hero-title"><h1>{headline}</h1>{badge(outcome)}</div><p>{e(report.get('scope', ''))}</p><div class="hero-meta"><span>Profile <b>{e(metadata.get('profile', 'EE build / amd64'))}</b></span><span>Commit <code>{e(str(metadata.get('candidate_commit', 'pending'))[:12])}</code></span><span>Started <b>{e(display_time(metadata.get('started')))}</b></span></div></section>
-<div class="metrics"><article><span>Controller jobs</span><strong>{job_count}</strong></article><article><span>Passed checks</span><strong class="green">{counts['passed']}</strong></article><article><span>Failed checks</span><strong class="{'red' if failure_count else ''}">{failure_count}</strong></article><article><span>Catalog templates reached</span><strong>{reached}<small> / {len(coverage)}</small></strong></article></div>
-{lifecycle_note}{failure_panel}<section class="image-card"><div class="eyebrow">Image under test</div><h2>{source}</h2><code class="image-ref">{e(image)}</code><div class="version-chips">{chips}</div><p class="muted">{e(metadata.get('runtime_digest', 'Build digest and source checksums are recorded in the evidence.'))}</p>{restoration_note}</section>
-<section><div class="section-heading"><h2>Run progression</h2><span>Status includes failure and skipped phases</span></div><ol class="phases {'build-phases' if build_only else ''}">{phases}</ol></section>
+<div class="metrics"><article><span>Controller jobs</span><strong>{job_count}</strong></article><article><span>Passed checks</span><strong class="green">{counts['passed']}</strong></article><article><span>Failed checks</span><strong class="{'red' if failure_count else ''}">{failure_count}</strong></article>{last_metric}</div>
+{lifecycle_note}{failure_panel}{recovery_panel}<section class="image-card"><div class="eyebrow">{image_caption}</div><h2>{source}</h2><code class="image-ref">{e(image)}</code><div class="version-chips">{chips}</div><p class="muted">{e(metadata.get('runtime_digest', 'Build digest and source checksums are recorded in the evidence.'))}</p>{restoration_note}</section>
+{progression}
 {scenario_panel}{reuse_panel}<div id="executions">{''.join(executions)}</div>
-<section id="runtime"><div class="section-heading"><h2>Execution environment versions</h2>{badge('passed' if runtime.get('compatible') is True else 'failed' if runtime.get('compatible') is False else 'not_started')}</div>{runtime_fail}<div class="runtime-checks">{checks}</div><details class="panel" {'open' if runtime.get('compatible') is False else ''}><summary>Collection inventory · {len(runtime.get('collections', []))} collections · compare CI build and Controller</summary><div class="table-scroll"><table><thead><tr><th>Collection</th><th>CI build</th><th>Observed</th><th>Source constraint</th><th>Compatibility</th></tr></thead><tbody>{collection_rows}</tbody></table></div></details></section>
+{runtime_panel}
 <section id="cleanup"><div class="section-heading"><h2>Cleanup and restoration</h2>{badge('failed' if cleanup_failed else 'passed' if cleanup else 'not_started')}</div><div class="panel table-scroll"><table><thead><tr><th>Outcome</th><th>Resource / action</th></tr></thead><tbody>{cleanup_rows or '<tr><td colspan="2">No cleanup result recorded yet.</td></tr>'}</tbody></table></div></section>
-<details class="panel"><summary>Full catalog coverage · {reached} / {len(coverage)} reached</summary><p class="muted">{coverage_note}</p><div class="table-scroll"><table><thead><tr><th>Template</th><th>Coverage</th></tr></thead><tbody>{coverage_rows}</tbody></table></div></details>
+{coverage_panel}
 <details class="panel"><summary>EE build provenance and run metadata</summary><pre>{advanced}</pre></details>
 <footer><h2>Download evidence</h2><div class="downloads"><a href="run.log">Sanitized run log</a><a href="report.json">JSON report</a><a href="junit.xml">JUnit results</a></div><p>Task output can contain passwords and tokens. This report includes canonical source task names and normalized failures; full logs remain behind Controller authentication. Source metadata and log links contain no login credentials.</p></footer></main></body></html>"""

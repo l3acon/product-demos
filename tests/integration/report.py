@@ -139,6 +139,47 @@ def render(report, directory):
             suffix = f" [Controller logs]({url})" if url else ""
             markdown.append(f"- **{row['name']}** — {text}{suffix}")
         markdown.append("")
+    recovery = report.get("recovery_plan")
+    if recovery:
+        aws = recovery["aws"]
+        markdown += [
+            "## Recovery plan — review before apply",
+            "",
+            f"Source `{recovery['source_run']}`; AWS account `{aws['account']}`; region `{aws['region']}`; owner `{recovery['owner']}`.",
+            "",
+            "No previous-run resources were deleted by planning.",
+            "",
+            "| Proposed action | Resource IDs |",
+            "| --- | --- |",
+        ]
+        for label, ids in (
+            ("EC2 instances", [row["id"] for row in aws["instances"]]),
+            ("VPCs and their networking", [row["id"] for row in aws["vpcs"]]),
+            ("Owned keypairs", [row["id"] for row in aws["keys"]]),
+            (
+                "Untagged keys requiring explicit adoption",
+                [row["id"] for row in aws["untagged_keys"]],
+            ),
+            ("Report bucket", [aws["bucket"]] if aws.get("bucket") else []),
+            ("APD jobs to stop / verify", [str(row["id"]) for row in recovery["jobs"]]),
+            (
+                "Temporary Controller objects",
+                [row["kind"] + "/" + str(row["id"]) for row in recovery["objects"]],
+            ),
+            ("Integration lock, removed last", [str(recovery["lease_id"])]),
+        ):
+            markdown.append("| " + label + " | " + ", ".join(ids) + " |")
+        markdown += [
+            "",
+            "**Blockers:** " + ("; ".join(recovery.get("blockers", [])) or "None"),
+            "",
+            "**Reviewed plan artifact:** `apd-recovery-plan-"
+            + recovery["recovery_run"]
+            + "`",
+            "",
+            "**Plan fingerprint:** `" + recovery["fingerprint"] + "`",
+            "",
+        ]
     image = report.get("metadata", {}).get("candidate_image")
     if image:
         markdown += ["**Image under test:** `" + str(image) + "`", ""]
