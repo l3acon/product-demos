@@ -119,6 +119,7 @@ Launch the workflow and complete the survey:
 | **Windows hosts** | Workload VMs for the Windows path (default `aws-dc:aws_win1`) |
 | **Report server** | Host that publishes the HTML dashboard (default `reports`; not patched) |
 | **RHEL Advisory IDs** | Comma-separated RHSA/CVE IDs to patch (e.g. `RHSA-2024:3138, CVE-2024-33599`) |
+| **Reboot RHEL hosts if required** | Reboot RHEL hosts after patching only when needed; defaults to `false` |
 | **Windows KB IDs** | Comma-separated KB IDs to patch (e.g. `KB5044284, KB5044030`) |
 
 The workflow:

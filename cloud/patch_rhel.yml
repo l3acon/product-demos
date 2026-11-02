@@ -27,7 +27,7 @@
     - name: Check if reboot is required
       ansible.builtin.command: needs-restarting -r
       register: reboot_check
-      failed_when: false
+      failed_when: reboot_check.rc not in [0, 1]
       changed_when: false
       when: rhsm_registered
 
@@ -36,9 +36,33 @@
         reboot_required: "{{ reboot_check.rc | default(0) != 0 }}"
         cacheable: true
 
+    - name: Reboot RHEL host when requested and required
+      ansible.builtin.reboot:
+        msg: Rebooting after targeted security updates
+        reboot_timeout: 600
+      register: rhel_reboot_result
+      when:
+        - rhsm_registered | default(false) | bool
+        - reboot | default(false) | bool
+        - reboot_required | bool
+
+    - name: Check if a reboot is still required
+      ansible.builtin.command: needs-restarting -r
+      register: reboot_check_after
+      failed_when: reboot_check_after.rc not in [0, 1]
+      changed_when: false
+      when: rhel_reboot_result is changed
+
+    - name: Update reboot_required after reboot
+      ansible.builtin.set_fact:
+        reboot_required: "{{ reboot_check_after.rc != 0 }}"
+        cacheable: true
+      when: rhel_reboot_result is changed
+
     - name: Report status
       ansible.builtin.debug:
         msg:
           - "Target Advisories: {{ cve_advisory_ids | join(', ') }}"
           - "Patching status: {{ 'SKIPPED (host not registered with RHSM)' if rhsm_unregistered | default(false) else ('Changes applied' if dnf_result.changed else 'No updates needed') }}"
+          - "Reboot performed: {{ rhel_reboot_result is changed }}"
           - "Reboot required: {{ reboot_required }}"

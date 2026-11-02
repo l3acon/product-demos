@@ -25,6 +25,7 @@ Enterprise-grade patching workflow with snapshot safety, parallel RHEL and Windo
 | Windows hosts | `_hosts_windows` | text | Yes | `aws-dc:aws_win1` |
 | Report server | `_report_server` | text | Yes | `reports` |
 | RHEL Advisory IDs | `input_cve_ids` | text | Yes | `RHSA-2024:3138, CVE-2024-33599` |
+| Reboot RHEL hosts if required | `reboot` | multiplechoice | Yes | `false` |
 | Windows KB IDs | `input_kb_ids` | text | Yes | `KB5044284, KB5044030` |
 
 ## Workflow
@@ -48,7 +49,7 @@ graph LR
 
 1. **Snapshot** — EBS snapshots of all target instances for recovery
 2. **Pre-check** (parallel) — Queries advisory/KB applicability on RHEL and Windows
-3. **Patch** (parallel) — Applies targeted advisories via `dnf` (RHEL) or `win_updates` (Windows)
+3. **Patch** (parallel) — Applies targeted advisories via `dnf` (RHEL) or `win_updates` (Windows). When `reboot=true`, registered RHEL hosts that require a reboot are restarted and checked again before the post-check. The setting does not reboot Windows hosts.
 4. **Post-check / Restore** — Verifies compliance; on failure, restores from EBS snapshot
 5. **Compliance Report** — Generates an HTML dashboard at `http://<reports>/patch_report.html`
 

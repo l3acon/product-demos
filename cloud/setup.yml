@@ -783,6 +783,17 @@ controller_workflows:
           variable: input_cve_ids
           required: false
           default: "RHSA-2024:3138, CVE-2024-33599"
+        - question_name: Reboot RHEL hosts if required
+          question_description: >-
+            When true, reboot registered RHEL hosts after patching if a reboot is
+            required. Windows hosts are not affected by this setting.
+          type: multiplechoice
+          variable: reboot
+          required: true
+          default: 'false'
+          choices:
+            - 'false'
+            - 'true'
         - question_name: Windows KB IDs (comma-separated)
           type: text
           variable: input_kb_ids
